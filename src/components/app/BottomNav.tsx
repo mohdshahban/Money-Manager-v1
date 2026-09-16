@@ -13,18 +13,18 @@ const items = [
 export function BottomNav({ onAdd }: { onAdd: () => void }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   return (
-    <>
+    <div className="lg:hidden">
       <motion.button
         whileTap={{ scale: 0.92 }}
         whileHover={{ scale: 1.05 }}
         onClick={onAdd}
         aria-label="Add transaction"
-        className="fixed bottom-20 right-5 z-50 grid h-14 w-14 place-items-center rounded-full text-white shadow-lg md:bottom-8 md:right-8 md:h-16 md:w-16"
+        className="fixed bottom-20 right-5 z-50 grid h-14 w-14 place-items-center rounded-full text-white shadow-lg"
         style={{ background: "var(--gradient-primary)", boxShadow: "var(--shadow-lg)" }}
       >
         <Plus className="h-7 w-7" strokeWidth={2.5} />
       </motion.button>
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/85 backdrop-blur-xl md:mx-auto md:max-w-2xl md:bottom-4 md:rounded-2xl md:border md:shadow-[var(--shadow-soft)]">
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/90 backdrop-blur-xl sm:mx-auto sm:mb-3 sm:max-w-2xl sm:rounded-2xl sm:border sm:shadow-[var(--shadow-soft)]">
         <ul className="mx-auto grid max-w-2xl grid-cols-5">
           {items.map(({ to, label, icon: Icon }) => {
             const active = pathname === to || pathname.startsWith(to + "/");
@@ -37,18 +37,13 @@ export function BottomNav({ onAdd }: { onAdd: () => void }) {
                 >
                   <Icon className="h-5 w-5" />
                   <span>{label}</span>
-                  {active && (
-                    <motion.span
-                      layoutId="nav-dot"
-                      className="absolute -top-px h-0.5 w-8 rounded-full bg-primary"
-                    />
-                  )}
+                  {active && <motion.span layoutId="nav-dot" className="absolute -top-px h-0.5 w-8 rounded-full bg-primary" />}
                 </Link>
               </li>
             );
           })}
         </ul>
       </nav>
-    </>
+    </div>
   );
 }
