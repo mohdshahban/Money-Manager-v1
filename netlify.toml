@@ -1,0 +1,12 @@
+# Netlify deployment config.
+# The Vite config switches to the Nitro "netlify" target when NETLIFY=true,
+# which Netlify sets automatically during builds.
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+[functions]
+  node_bundler = "none"
