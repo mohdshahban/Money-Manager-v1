@@ -1,15 +1,17 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { ArrowLeft, Trash2, Edit3, X } from "lucide-react";
+import { ArrowLeft, Trash2, Edit3, X, Pencil, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { useProjects, useTransactions, useCategories, useAccounts, useMutateEntity, type Project } from "@/hooks/useFinance";
+import { useProjects, useTransactions, useCategories, useAccounts, useMutateEntity, useSoftDeleteTx, type Project, type Transaction } from "@/hooks/useFinance";
 import { useProfile } from "@/hooks/useProfile";
 import { formatCurrency } from "@/lib/format";
+import { TransactionDialog } from "@/components/app/TransactionDialog";
+import { ReceiptIndicator } from "@/components/app/ReceiptIndicator";
 import { toast } from "sonner";
 import { startOfDay, endOfDay, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from "date-fns";
 
@@ -24,8 +26,12 @@ function ProjectDetail() {
   const { data: txs = [] } = useTransactions();
   const { data: categories = [] } = useCategories();
   const { data: accounts = [] } = useAccounts();
-  const { update, remove } = useMutateEntity<Project>("projects", ["projects"]);
+  const { update: updateProject, remove: removeProject } = useMutateEntity<Project>("projects", ["projects"]);
+  const softDeleteTx = useSoftDeleteTx();
+  const { update: updateTx } = useMutateEntity<Transaction>("transactions", ["transactions"]);
   const [editOpen, setEditOpen] = useState(false);
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [txOpen, setTxOpen] = useState(false);
 
   const project = projects.find((p) => p.id === projectId);
   const projectTxs = useMemo(() => txs.filter((tx) => tx.project_id === projectId), [txs, projectId]);
@@ -134,7 +140,7 @@ function ProjectDetail() {
         <Button variant="outline" size="icon" onClick={() => setEditOpen(true)}><Edit3 className="h-4 w-4" /></Button>
         <Button variant="outline" size="icon" onClick={async () => {
           if (!confirm("Delete this project? Transactions remain but lose the project tag.")) return;
-          await remove.mutateAsync(project.id);
+          await removeProject.mutateAsync(project.id);
           toast.success("Project deleted");
           nav({ to: "/projects" });
         }}><Trash2 className="h-4 w-4 text-destructive" /></Button>
@@ -296,29 +302,49 @@ function ProjectDetail() {
         {filteredTxs.length === 0 ? (
           <p className="text-sm text-muted-foreground">Tag transactions with this project to see them here.</p>
         ) : (
-          <ul className="grid divide-y">
+          <ul className="grid gap-1">
             {filteredTxs.map((tx) => {
               const cat = categories.find((c) => c.id === tx.category_id);
               const parent = cat?.parent_id ? categories.find((c) => c.id === cat.parent_id) : null;
               const acc = accounts.find((a) => a.id === tx.account_id);
+              const sign = tx.type === "income" ? "+" : tx.type === "expense" ? "−" : "";
+              const color = tx.type === "income" ? "text-[color:var(--success)]" : tx.type === "expense" ? "text-primary" : "text-secondary";
               return (
-                <li key={tx.id} className="flex items-start justify-between gap-3 py-3">
+                <li key={tx.id} className="group flex items-start gap-3 rounded-xl p-2 hover:bg-muted/50">
+                  <div className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-xl text-xs font-semibold text-white" style={{ background: cat?.color ?? "var(--muted-foreground)" }}>
+                    {(cat?.name ?? tx.type).slice(0, 2).toUpperCase()}
+                  </div>
                   <div className="min-w-0 flex-1">
                     <p className="line-clamp-2 break-words text-sm font-medium">{tx.vendor || tx.notes || cat?.name || "Transaction"}</p>
                     <p className="line-clamp-2 break-words text-xs text-muted-foreground">
-                      {parent ? `${parent.name} · ${cat?.name}` : cat?.name ?? "—"} · {acc?.name ?? "—"}{tx.payment_method ? ` · ${tx.payment_method}` : ""} · {new Date(tx.occurred_at).toLocaleString()}
+                      {parent ? `${parent.name} · ${cat?.name}` : cat?.name ?? tx.type} · {acc?.name ?? "—"}{tx.payment_method ? ` · ${tx.payment_method}` : ""} · {new Date(tx.occurred_at).toLocaleString()}
                     </p>
+                    <ReceiptIndicator receiptPath={tx.receipt_path} />
                     {(tx.tags?.length ?? 0) > 0 && (
                       <div className="mt-1 flex flex-wrap gap-1">
                         {tx.tags!.map((tg) => (
-                          <span key={tg} className="rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">#{tg}</span>
+                          <button
+                            key={tg}
+                            type="button"
+                            onClick={() => setTagFilter(tg)}
+                            className="rounded-full border border-primary/30 bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary hover:bg-primary/20"
+                          >#{tg}</button>
                         ))}
                       </div>
                     )}
                   </div>
-                  <p className={`shrink-0 tabular-nums text-sm font-semibold ${tx.type === "expense" ? "text-destructive" : tx.type === "income" ? "text-emerald-600" : ""}`}>
-                    {tx.type === "expense" ? "-" : tx.type === "income" ? "+" : ""}{formatCurrency(Number(tx.amount), currency)}
-                  </p>
+                  <p className={`shrink-0 pt-0.5 text-sm font-semibold tabular-nums ${color}`}>{sign}{formatCurrency(Number(tx.amount), currency)}</p>
+                  <div className="flex shrink-0 items-center gap-0.5 pt-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => updateTx.mutate({ id: tx.id, favorite: !tx.favorite })} aria-label="Favorite">
+                      <Star className={`h-4 w-4 ${tx.favorite ? "fill-[color:var(--warning)] text-[color:var(--warning)]" : ""}`} />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingTx(tx); setTxOpen(true); }} aria-label="Edit">
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => softDeleteTx.mutate(tx.id)} aria-label="Delete">
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </li>
               );
             })}
@@ -326,8 +352,10 @@ function ProjectDetail() {
         )}
       </div>
 
+      <TransactionDialog open={txOpen} onOpenChange={(o) => { setTxOpen(o); if (!o) setEditingTx(null); }} editing={editingTx} />
+
       <EditProjectDialog open={editOpen} onOpenChange={setEditOpen} project={project} onSave={async (patch) => {
-        await update.mutateAsync({ id: project.id, ...patch });
+        await updateProject.mutateAsync({ id: project.id, ...patch });
         toast.success("Project updated");
       }} />
     </div>
