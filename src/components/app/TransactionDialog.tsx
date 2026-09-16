@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Camera, ImageIcon, Loader2, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -6,7 +6,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useAccounts, useCategories, useProjects, useMutateEntity, useCreateCategory, type Transaction } from "@/hooks/useFinance";
 import { useTransactions } from "@/hooks/useFinance";
 import { toast } from "sonner";
@@ -16,6 +25,23 @@ type Props = {
   onOpenChange: (o: boolean) => void;
   editing?: Transaction | null;
 };
+
+function toLocalInputValue(date: Date) {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
+function compactDateLabel(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Now";
+  const today = new Date();
+  const sameDay = date.toDateString() === today.toDateString();
+  const dateLabel = sameDay
+    ? "Today"
+    : date.toLocaleDateString(undefined, { day: "numeric", month: "short", year: date.getFullYear() === today.getFullYear() ? undefined : "numeric" });
+  const timeLabel = date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  return `${dateLabel}, ${timeLabel}`;
+}
 
 export function TransactionDialog({ open, onOpenChange, editing }: Props) {
   const { data: accounts = [] } = useAccounts();
@@ -35,7 +61,11 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
   const [notes, setNotes] = useState("");
   const [projectId, setProjectId] = useState<string>("");
   const [tagsInput, setTagsInput] = useState("");
-  const [occurredAt, setOccurredAt] = useState(() => new Date().toISOString().slice(0, 16));
+  const [occurredAt, setOccurredAt] = useState(() => toLocalInputValue(new Date()));
+  const [showDateEditor, setShowDateEditor] = useState(false);
+  const [dateChanged, setDateChanged] = useState(false);
+  const [noteFocused, setNoteFocused] = useState(false);
+  const [showMoreTags, setShowMoreTags] = useState(false);
   const [newCatName, setNewCatName] = useState("");
   const [newCatOpen, setNewCatOpen] = useState(false);
   const [newSubName, setNewSubName] = useState("");
@@ -43,8 +73,20 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
   const [receiptPath, setReceiptPath] = useState<string | null>(null);
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+
   const cameraRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const amountRef = useRef<HTMLInputElement>(null);
+  const accountRef = useRef<HTMLButtonElement>(null);
+  const toAccountRef = useRef<HTMLButtonElement>(null);
+  const categoryRef = useRef<HTMLButtonElement>(null);
+  const subCategoryRef = useRef<HTMLButtonElement>(null);
+  const projectRef = useRef<HTMLButtonElement>(null);
+  const dateRef = useRef<HTMLInputElement>(null);
+  const vendorRef = useRef<HTMLInputElement>(null);
+  const noteRef = useRef<HTMLTextAreaElement>(null);
+  const tagsRef = useRef<HTMLInputElement>(null);
+  const addButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (editing) {
@@ -64,8 +106,12 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
       setNotes(editing.notes ?? "");
       setProjectId(editing.project_id ?? "");
       setTagsInput((editing.tags ?? []).join(", "));
-      setOccurredAt(new Date(editing.occurred_at).toISOString().slice(0, 16));
+      setOccurredAt(toLocalInputValue(new Date(editing.occurred_at)));
       setReceiptPath(editing.receipt_path ?? null);
+      setDateChanged(true);
+      setShowDateEditor(false);
+      setNoteFocused(false);
+      setShowMoreTags(false);
     } else if (open) {
       setType("expense");
       setAmount("");
@@ -77,10 +123,23 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
       setNotes("");
       setProjectId("");
       setTagsInput("");
-      setOccurredAt(new Date().toISOString().slice(0, 16));
+      setOccurredAt(toLocalInputValue(new Date()));
       setReceiptPath(null);
+      setDateChanged(false);
+      setShowDateEditor(false);
+      setNoteFocused(false);
+      setShowMoreTags(false);
     }
   }, [editing, open, accounts, categories]);
+
+  useEffect(() => {
+    if (!open) return;
+    const timer = window.setTimeout(() => {
+      amountRef.current?.focus();
+      amountRef.current?.select();
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [open]);
 
   useEffect(() => {
     let active = true;
@@ -129,6 +188,84 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
   const parentCats = categories.filter((c) => (type === "transfer" ? false : c.type === type) && !c.parent_id);
   const subCats = categories.filter((c) => c.parent_id === categoryId);
 
+  const recentProjects = useMemo(() => {
+    const ids: string[] = [];
+    for (const tx of allTx) {
+      if (!tx.project_id || ids.includes(tx.project_id) || !projects.some((p) => p.id === tx.project_id)) continue;
+      ids.push(tx.project_id);
+      if (ids.length === 3) break;
+    }
+    return ids.map((id) => projects.find((p) => p.id === id)!).filter(Boolean);
+  }, [allTx, projects]);
+
+  const recentProjectIds = useMemo(() => new Set(recentProjects.map((p) => p.id)), [recentProjects]);
+  const activeProjects = useMemo(
+    () => projects.filter((p) => p.status === "active" && !recentProjectIds.has(p.id)),
+    [projects, recentProjectIds],
+  );
+  const otherProjects = useMemo(
+    () => projects.filter((p) => p.status !== "active" && !recentProjectIds.has(p.id)),
+    [projects, recentProjectIds],
+  );
+
+  const suggestedTags = useMemo(() => {
+    const selected = new Set(
+      tagsInput.split(",").map((s) => s.trim().replace(/^#/, "").toLowerCase()).filter(Boolean),
+    );
+    const scores = new Map<string, { label: string; score: number; lastIndex: number; contextual: boolean }>();
+
+    allTx.forEach((tx, index) => {
+      const txCat = categories.find((c) => c.id === tx.category_id);
+      const txRootId = txCat?.parent_id ?? txCat?.id ?? null;
+      const projectMatch = !!projectId && tx.project_id === projectId;
+      const categoryMatch = !!categoryId && (subCategoryId ? tx.category_id === subCategoryId : txRootId === categoryId);
+
+      for (const rawTag of tx.tags ?? []) {
+        const label = rawTag.trim();
+        if (!label) continue;
+        const key = label.toLowerCase();
+        const current = scores.get(key) ?? { label, score: 0, lastIndex: index, contextual: false };
+        current.score += 1 + Math.max(0, 3 - index / 20);
+        current.lastIndex = Math.min(current.lastIndex, index);
+        if (projectMatch) {
+          current.score += 20;
+          current.contextual = true;
+        }
+        if (categoryMatch) {
+          current.score += 12;
+          current.contextual = true;
+        }
+        scores.set(key, current);
+      }
+    });
+
+    if (projectId) {
+      ["1st Payment", "2nd Payment", "3rd Payment"].forEach((label, index) => {
+        const key = label.toLowerCase();
+        const current = scores.get(key) ?? { label, score: 0, lastIndex: 9999, contextual: true };
+        current.score += 100 - index;
+        current.contextual = true;
+        scores.set(key, current);
+      });
+    }
+
+    const genericPersonalTags = new Set(["home", "personal"]);
+    return [...scores.entries()]
+      .filter(([key, item]) => !selected.has(key) && (!genericPersonalTags.has(key) || item.contextual))
+      .sort((a, b) => b[1].score - a[1].score || a[1].lastIndex - b[1].lastIndex || a[1].label.localeCompare(b[1].label))
+      .map(([, item]) => item.label);
+  }, [allTx, categories, categoryId, subCategoryId, projectId, tagsInput]);
+
+  const visibleSuggestedTags = showMoreTags ? suggestedTags : suggestedTags.slice(0, 5);
+
+  const addSuggestedTag = (tag: string) => {
+    const parts = tagsInput.split(",").map((s) => s.trim()).filter(Boolean);
+    const existing = new Set(parts.map((part) => part.replace(/^#/, "").toLowerCase()));
+    if (!existing.has(tag.toLowerCase())) parts.push(tag);
+    setTagsInput(parts.join(", "));
+    tagsRef.current?.focus();
+  };
+
   const addCategory = async () => {
     const name = newCatName.trim();
     if (!name) return;
@@ -159,6 +296,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
   };
 
   const submit = async () => {
+    if (create.isPending || update.isPending) return;
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) return toast.error("Enter a valid amount");
     if (!accountId) return toast.error("Select an account");
@@ -193,7 +331,17 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <DialogContent
+        className="max-h-[90vh] overflow-y-auto sm:max-w-lg"
+        onEscapeKeyDown={() => onOpenChange(false)}
+        onKeyDownCapture={(e) => {
+          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            e.stopPropagation();
+            void submit();
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>{editing ? "Edit transaction" : "New transaction"}</DialogTitle>
         </DialogHeader>
@@ -202,6 +350,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
             {(["expense", "income", "transfer"] as const).map((t) => (
               <button
                 key={t}
+                type="button"
                 onClick={() => setType(t)}
                 className="rounded-xl border px-3 py-2 text-sm font-medium capitalize transition-all data-[active=true]:border-primary data-[active=true]:bg-primary data-[active=true]:text-primary-foreground"
                 data-active={type === t}
@@ -210,23 +359,51 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
               </button>
             ))}
           </div>
+
           <div className="grid gap-2">
             <Label>Amount</Label>
-            <Input type="number" step="0.01" placeholder="0.00" value={amount} onChange={(e) => setAmount(e.target.value)} className="h-12 text-2xl font-semibold" />
+            <Input
+              ref={amountRef}
+              type="number"
+              step="0.01"
+              placeholder="0.00"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
+                  e.preventDefault();
+                  accountRef.current?.focus();
+                }
+              }}
+              className="h-12 text-2xl font-semibold"
+            />
           </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-2">
               <Label>Account</Label>
-              <Select value={accountId} onValueChange={setAccountId}>
-                <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+              <Select
+                value={accountId}
+                onValueChange={(value) => {
+                  setAccountId(value);
+                  window.setTimeout(() => (type === "transfer" ? toAccountRef.current : categoryRef.current)?.focus(), 0);
+                }}
+              >
+                <SelectTrigger ref={accountRef}><SelectValue placeholder="Select" /></SelectTrigger>
                 <SelectContent>{accounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             {type === "transfer" ? (
               <div className="grid gap-2">
                 <Label>To account</Label>
-                <Select value={toAccountId} onValueChange={setToAccountId}>
-                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                <Select
+                  value={toAccountId}
+                  onValueChange={(value) => {
+                    setToAccountId(value);
+                    window.setTimeout(() => projectRef.current?.focus(), 0);
+                  }}
+                >
+                  <SelectTrigger ref={toAccountRef}><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent>{accounts.filter((a) => a.id !== accountId).map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
@@ -238,8 +415,16 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
                     {newCatOpen ? "Cancel" : "+ New"}
                   </button>
                 </div>
-                <Select value={categoryId} onValueChange={(v) => { setCategoryId(v); setSubCategoryId(""); }}>
-                  <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                <Select
+                  value={categoryId}
+                  onValueChange={(value) => {
+                    setCategoryId(value);
+                    setSubCategoryId("");
+                    const hasSubcategories = categories.some((c) => c.parent_id === value);
+                    window.setTimeout(() => (hasSubcategories ? subCategoryRef.current : projectRef.current)?.focus(), 0);
+                  }}
+                >
+                  <SelectTrigger ref={categoryRef}><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent>{parentCats.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
                 </Select>
                 {newCatOpen && (
@@ -252,6 +437,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
               </div>
             )}
           </div>
+
           {type !== "transfer" && categoryId && (
             <div className="grid gap-2">
               <div className="flex items-center justify-between">
@@ -261,8 +447,14 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
                 </button>
               </div>
               {subCats.length > 0 && (
-                <Select value={subCategoryId} onValueChange={setSubCategoryId}>
-                  <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
+                <Select
+                  value={subCategoryId}
+                  onValueChange={(value) => {
+                    setSubCategoryId(value);
+                    window.setTimeout(() => projectRef.current?.focus(), 0);
+                  }}
+                >
+                  <SelectTrigger ref={subCategoryRef}><SelectValue placeholder="Optional" /></SelectTrigger>
                   <SelectContent>{subCats.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
                 </Select>
               )}
@@ -275,30 +467,120 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
               )}
             </div>
           )}
+
           <div className="grid gap-2">
             <Label>Project <span className="text-xs text-muted-foreground">(optional)</span></Label>
-            <Select value={projectId || "__none"} onValueChange={(v) => setProjectId(v === "__none" ? "" : v)}>
-              <SelectTrigger><SelectValue placeholder="Unassigned / General" /></SelectTrigger>
+            <Select
+              value={projectId || "__none"}
+              onValueChange={(value) => {
+                setProjectId(value === "__none" ? "" : value);
+                window.setTimeout(() => vendorRef.current?.focus(), 0);
+              }}
+            >
+              <SelectTrigger ref={projectRef}><SelectValue placeholder="Unassigned / General" /></SelectTrigger>
               <SelectContent>
+                {recentProjects.length > 0 && (
+                  <SelectGroup>
+                    <SelectLabel className="text-xs uppercase tracking-wide text-muted-foreground">Recent projects</SelectLabel>
+                    {recentProjects.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                  </SelectGroup>
+                )}
+                {activeProjects.length > 0 && (
+                  <>
+                    {recentProjects.length > 0 && <SelectSeparator />}
+                    <SelectGroup>
+                      <SelectLabel className="text-xs uppercase tracking-wide text-muted-foreground">Active projects</SelectLabel>
+                      {activeProjects.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                    </SelectGroup>
+                  </>
+                )}
+                {otherProjects.length > 0 && (
+                  <>
+                    {(recentProjects.length > 0 || activeProjects.length > 0) && <SelectSeparator />}
+                    <SelectGroup>
+                      <SelectLabel className="text-xs uppercase tracking-wide text-muted-foreground">Other projects</SelectLabel>
+                      {otherProjects.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+                    </SelectGroup>
+                  </>
+                )}
+                {projects.length > 0 && <SelectSeparator />}
                 <SelectItem value="__none">Unassigned / General</SelectItem>
-                {projects.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
+
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-2">
               <Label>Date & time</Label>
-              <Input type="datetime-local" value={occurredAt} onChange={(e) => setOccurredAt(e.target.value)} />
+              {showDateEditor ? (
+                <Input
+                  ref={dateRef}
+                  type="datetime-local"
+                  value={occurredAt}
+                  onChange={(e) => {
+                    setOccurredAt(e.target.value);
+                    setDateChanged(true);
+                  }}
+                  onBlur={() => setShowDateEditor(false)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
+                      e.preventDefault();
+                      setShowDateEditor(false);
+                      vendorRef.current?.focus();
+                    }
+                  }}
+                />
+              ) : (
+                <div className="flex h-9 items-center justify-between gap-2 rounded-md border border-input bg-transparent px-3 text-sm shadow-sm">
+                  <span className="min-w-0 truncate">{!editing && !dateChanged ? "Now · " : ""}{compactDateLabel(occurredAt)}</span>
+                  <button
+                    type="button"
+                    className="shrink-0 text-xs font-medium text-primary hover:underline"
+                    onClick={() => {
+                      setShowDateEditor(true);
+                      window.setTimeout(() => dateRef.current?.focus(), 0);
+                    }}
+                  >Change</button>
+                </div>
+              )}
             </div>
             <div className="grid gap-2">
               <Label>Vendor / Payee</Label>
-              <Input value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="Optional" />
+              <Input
+                ref={vendorRef}
+                value={vendor}
+                onChange={(e) => setVendor(e.target.value)}
+                placeholder="Optional"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
+                    e.preventDefault();
+                    noteRef.current?.focus();
+                  }
+                }}
+              />
             </div>
           </div>
+
           <div className="grid gap-2">
             <Label>Note</Label>
-            <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional note" rows={2} />
+            <Textarea
+              ref={noteRef}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              onFocus={() => setNoteFocused(true)}
+              onBlur={() => setNoteFocused(false)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                  e.preventDefault();
+                  tagsRef.current?.focus();
+                }
+              }}
+              placeholder="Optional note"
+              rows={noteFocused ? 4 : 2}
+              className="transition-[min-height] duration-150"
+            />
           </div>
+
           <div className="grid gap-2">
             <Label>Receipt <span className="text-xs text-muted-foreground">(optional)</span></Label>
             <input
@@ -342,42 +624,54 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
               </div>
             )}
           </div>
+
           <div className="grid gap-2">
-            <Label>Tags <span className="text-xs text-muted-foreground">(comma-separated, e.g. urgent, reimbursable)</span></Label>
-            <Input value={tagsInput} onChange={(e) => setTagsInput(e.target.value)} placeholder="tag1, tag2" />
-            {(() => {
-              const selected = new Set(
-                tagsInput.split(",").map((s) => s.trim().replace(/^#/, "").toLowerCase()).filter(Boolean),
-              );
-              const existing = Array.from(
-                new Set(allTx.flatMap((t) => t.tags ?? []).filter(Boolean)),
-              ).sort();
-              const available = existing.filter((tg) => !selected.has(tg.toLowerCase()));
-              if (available.length === 0) return null;
-              return (
-                <div className="flex flex-wrap gap-1.5">
-                  {available.map((tg) => (
+            <Label>Tags</Label>
+            <Input
+              ref={tagsRef}
+              value={tagsInput}
+              onChange={(e) => setTagsInput(e.target.value)}
+              placeholder="Add tags..."
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
+                  e.preventDefault();
+                  addButtonRef.current?.focus();
+                }
+              }}
+            />
+            {suggestedTags.length > 0 && (
+              <div className="grid gap-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-medium text-muted-foreground">Suggested tags</span>
+                  {suggestedTags.length > 5 && (
                     <button
-                      key={tg}
                       type="button"
-                      onClick={() => {
-                        const parts = tagsInput.split(",").map((s) => s.trim()).filter(Boolean);
-                        parts.push(tg);
-                        setTagsInput(parts.join(", "));
-                      }}
+                      className="text-[11px] font-medium text-primary hover:underline"
+                      onClick={() => setShowMoreTags((value) => !value)}
+                    >{showMoreTags ? "Show less" : `+${suggestedTags.length - 5} More`}</button>
+                  )}
+                </div>
+                <div className={`flex flex-wrap gap-1.5 ${showMoreTags ? "max-h-24 overflow-y-auto pr-1" : ""}`}>
+                  {visibleSuggestedTags.map((tag) => (
+                    <button
+                      key={tag}
+                      type="button"
+                      onClick={() => addSuggestedTag(tag)}
                       className="rounded-full border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary hover:bg-primary/20"
-                    >+ #{tg}</button>
+                    >+ #{tag}</button>
                   ))}
                 </div>
-              );
-            })()}
+              </div>
+            )}
           </div>
+
           <div className="flex justify-end gap-2 pt-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button onClick={submit} disabled={create.isPending || update.isPending}>
+            <Button ref={addButtonRef} onClick={submit} disabled={create.isPending || update.isPending}>
               {editing ? "Save" : "Add"}
             </Button>
           </div>
+          <p className="-mt-2 text-right text-[10px] text-muted-foreground">Ctrl/Cmd + Enter to save · Esc to close</p>
         </div>
       </DialogContent>
     </Dialog>
