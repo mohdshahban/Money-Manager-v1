@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TransactionDialog } from "@/components/app/TransactionDialog";
+import { ReceiptIndicator } from "@/components/app/ReceiptIndicator";
 import { exportCSV, exportExcel, exportPDF } from "@/lib/exports";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
@@ -286,6 +287,7 @@ function TxPage() {
                       <div className="min-w-0 flex-1">
                         <p className="line-clamp-2 break-words text-sm font-medium">{t.vendor || t.notes || cat?.name || "Transaction"}</p>
                         <p className="line-clamp-2 break-words text-xs text-muted-foreground">{cat?.name ?? t.type} · {acc?.name ?? "—"} · {format(new Date(t.occurred_at), "HH:mm")}</p>
+                        <ReceiptIndicator receiptPath={t.receipt_path} />
                         {(t.tags?.length ?? 0) > 0 && (
                           <div className="mt-1 flex flex-wrap gap-1">
                             {t.tags!.map((tg) => (
