@@ -6,6 +6,7 @@ import { startOfMonth, endOfMonth, startOfYear, endOfYear, startOfWeek, endOfWee
 import { useTransactions, useCategories, useAccounts, useProjects, type Category, type Project, type Transaction } from "@/hooks/useFinance";
 import { useProfile } from "@/hooks/useProfile";
 import { formatCurrency } from "@/lib/format";
+import { withoutPartnerSystemTags } from "@/lib/partnerLedger";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { TransactionCollection } from "@/components/app/TransactionCollection";
@@ -186,7 +187,8 @@ function buildBreakdown(rows: Transaction[], dimension: Dimension, cats: Categor
       addBreakdown(map, name.toLowerCase(), name, amount, "#F97316");
       return;
     }
-    const tags = tx.tags?.length ? tx.tags : ["Untagged"];
+    const visibleTags = withoutPartnerSystemTags(tx.tags);
+    const tags = visibleTags.length ? visibleTags : ["Untagged"];
     tags.forEach((tag) => addBreakdown(map, tag, tag === "Untagged" ? tag : `#${tag}`, amount, "#8B5CF6"));
   });
   return [...map.values()].sort((a, b) => b.value - a.value);
@@ -200,7 +202,8 @@ function matchesDimension(tx: Transaction, dimension: Dimension, key: string, ca
   }
   if (dimension === "project") return (tx.project_id ?? "unassigned") === key;
   if (dimension === "vendor") return (tx.vendor || "No vendor").toLowerCase() === key;
-  return (tx.tags?.length ? tx.tags : ["Untagged"]).includes(key);
+  const visibleTags = withoutPartnerSystemTags(tx.tags);
+  return (visibleTags.length ? visibleTags : ["Untagged"]).includes(key);
 }
 
 function changePct(current: number, previous: number) {
