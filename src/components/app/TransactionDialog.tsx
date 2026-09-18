@@ -21,10 +21,7 @@ import { useTransactions } from "@/hooks/useFinance";
 import { toast } from "sonner";
 import {
   PARTNER_ADVANCE_TAG,
-  PARTNER_DRAWING_TAG,
-  PARTNER_DRAWINGS_ACCOUNT_TYPE,
   PARTNER_FLOAT_ACCOUNT_TYPE,
-  PARTNER_RETURN_TAG,
   PARTNER_SPEND_TAG,
   PARTNER_SYSTEM_TAGS,
   hasPartnerTag,
@@ -32,7 +29,6 @@ import {
   withoutPartnerSystemTags,
 } from "@/lib/partnerLedger";
 
-type TransactionPurpose = "normal" | "partner_advance" | "partner_drawing" | "partner_return";
 type SpentBy = "me" | "partner";
 
 type Props = {
@@ -67,7 +63,6 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
   const createCategory = useCreateCategory();
 
   const [type, setType] = useState<"income" | "expense" | "transfer">("expense");
-  const [purpose, setPurpose] = useState<TransactionPurpose>("normal");
   const [spentBy, setSpentBy] = useState<SpentBy>("me");
   const [amount, setAmount] = useState("");
   const [categoryId, setCategoryId] = useState<string>("");
@@ -93,7 +88,6 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
 
   const normalAccounts = useMemo(() => accounts.filter((a) => !isPartnerSystemAccountType(a.type)), [accounts]);
   const partnerFloatAccount = accounts.find((a) => a.type === PARTNER_FLOAT_ACCOUNT_TYPE) ?? null;
-  const partnerDrawingsAccount = accounts.find((a) => a.type === PARTNER_DRAWINGS_ACCOUNT_TYPE) ?? null;
 
   const cameraRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -111,21 +105,15 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
 
   useEffect(() => {
     if (editing) {
-      const isAdvance = hasPartnerTag(editing.tags, PARTNER_ADVANCE_TAG) ||
+      const isPaidToPartner = hasPartnerTag(editing.tags, PARTNER_ADVANCE_TAG) ||
         (editing.type === "transfer" && !!partnerFloatAccount && editing.to_account_id === partnerFloatAccount.id);
-      const isDrawing = hasPartnerTag(editing.tags, PARTNER_DRAWING_TAG) ||
-        (editing.type === "transfer" && !!partnerFloatAccount && !!partnerDrawingsAccount && editing.account_id === partnerFloatAccount.id && editing.to_account_id === partnerDrawingsAccount.id);
-      const isReturn = hasPartnerTag(editing.tags, PARTNER_RETURN_TAG) ||
-        (editing.type === "transfer" && !!partnerFloatAccount && editing.account_id === partnerFloatAccount.id && editing.to_account_id !== partnerDrawingsAccount?.id);
-      const inferredPurpose: TransactionPurpose = isAdvance ? "partner_advance" : isDrawing ? "partner_drawing" : isReturn ? "partner_return" : "normal";
       const isPartnerSpend = editing.type === "expense" && (
         hasPartnerTag(editing.tags, PARTNER_SPEND_TAG) ||
         (!!partnerFloatAccount && editing.account_id === partnerFloatAccount.id)
       );
 
-      setPurpose(inferredPurpose);
       setSpentBy(isPartnerSpend ? "partner" : "me");
-      setType(inferredPurpose === "normal" ? editing.type : "transfer");
+      setType(editing.type);
       setAmount(String(editing.amount));
       const editCat = categories.find((c) => c.id === editing.category_id);
       if (editCat?.parent_id) {
@@ -136,9 +124,8 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
         setSubCategoryId("");
       }
       if (isPartnerSpend) setAccountId(normalAccounts[0]?.id ?? "");
-      else if (inferredPurpose === "partner_drawing" || inferredPurpose === "partner_return") setAccountId(normalAccounts[0]?.id ?? "");
       else setAccountId(editing.account_id ?? normalAccounts[0]?.id ?? "");
-      setToAccountId(inferredPurpose === "partner_return" ? (editing.to_account_id ?? normalAccounts[0]?.id ?? "") : (editing.to_account_id ?? ""));
+      setToAccountId(isPaidToPartner ? "__partner" : (editing.to_account_id ?? ""));
       setVendor(editing.vendor ?? "");
       setNotes(editing.notes ?? "");
       setProjectId(editing.project_id ?? "");
@@ -151,7 +138,6 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
       setShowMoreTags(false);
     } else if (open) {
       setType("expense");
-      setPurpose("normal");
       setSpentBy("me");
       setAmount("");
       setCategoryId("");
@@ -169,7 +155,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
       setNoteFocused(false);
       setShowMoreTags(false);
     }
-  }, [editing, open, accounts, categories, normalAccounts, partnerFloatAccount, partnerDrawingsAccount]);
+  }, [editing, open, accounts, categories, normalAccounts, partnerFloatAccount]);
 
   useEffect(() => {
     if (!open) return;
@@ -335,52 +321,30 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
     }
   };
 
-  const ensurePartnerAccounts = async () => {
-    let float = partnerFloatAccount;
-    let drawings = partnerDrawingsAccount;
-    if (float && drawings) return { float, drawings };
+  const ensurePartnerAccount = async () => {
+    if (partnerFloatAccount) return partnerFloatAccount;
 
     const { data: userData } = await supabase.auth.getUser();
     const uid = userData.user?.id;
     if (!uid) throw new Error("You must be signed in");
 
-    const rows: Array<Record<string, unknown>> = [];
-    if (!float) {
-      rows.push({
+    const { data, error } = await supabase
+      .from("accounts")
+      .insert({
         user_id: uid,
-        name: "Partner Float",
+        name: "Partner",
         type: PARTNER_FLOAT_ACCOUNT_TYPE,
         icon: "wallet-cards",
         color: "#0EA5E9",
         opening_balance: 0,
         currency: normalAccounts[0]?.currency ?? "USD",
         archived: false,
-      });
-    }
-    if (!drawings) {
-      rows.push({
-        user_id: uid,
-        name: "Partner Drawings",
-        type: PARTNER_DRAWINGS_ACCOUNT_TYPE,
-        icon: "hand-coins",
-        color: "#F59E0B",
-        opening_balance: 0,
-        currency: normalAccounts[0]?.currency ?? "USD",
-        archived: false,
-      });
-    }
+      } as never)
+      .select("*")
+      .single();
 
-    if (rows.length > 0) {
-      const { data, error } = await supabase.from("accounts").insert(rows as never).select("*");
-      if (error) throw error;
-      for (const account of (data ?? []) as unknown as Account[]) {
-        if (account.type === PARTNER_FLOAT_ACCOUNT_TYPE) float = account;
-        if (account.type === PARTNER_DRAWINGS_ACCOUNT_TYPE) drawings = account;
-      }
-    }
-
-    if (!float || !drawings) throw new Error("Could not initialize partner tracking");
-    return { float, drawings };
+    if (error) throw error;
+    return data as unknown as Account;
   };
 
   const submit = async () => {
@@ -397,100 +361,62 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
     let payload: Partial<Transaction>;
 
     try {
-      if (purpose !== "normal") {
-        if (!projectId) return toast.error("Select a project for partner money tracking");
-        const system = await ensurePartnerAccounts();
-
-        if (purpose === "partner_advance") {
-          if (!accountId) return toast.error("Select the account you paid from");
-          payload = {
-            type: "transfer",
-            amount: amt,
-            category_id: null,
-            account_id: accountId,
-            to_account_id: system.float.id,
-            vendor: vendor || "Execution Partner",
-            notes: notes || null,
-            project_id: projectId,
-            tags: [...userTags, PARTNER_ADVANCE_TAG],
-            occurred_at: new Date(occurredAt).toISOString(),
-            receipt_path: receiptPath,
-            payment_method: editing?.payment_method ?? null,
-            status: "paid",
-          };
-        } else if (purpose === "partner_drawing") {
-          payload = {
-            type: "transfer",
-            amount: amt,
-            category_id: null,
-            account_id: system.float.id,
-            to_account_id: system.drawings.id,
-            vendor: vendor || "Execution Partner",
-            notes: notes || null,
-            project_id: projectId,
-            tags: [...userTags, PARTNER_DRAWING_TAG],
-            occurred_at: new Date(occurredAt).toISOString(),
-            receipt_path: receiptPath,
-            payment_method: null,
-            status: "paid",
-          };
-        } else {
-          if (!toAccountId) return toast.error("Select the account receiving the returned money");
-          payload = {
-            type: "transfer",
-            amount: amt,
-            category_id: null,
-            account_id: system.float.id,
-            to_account_id: toAccountId,
-            vendor: vendor || "Execution Partner",
-            notes: notes || null,
-            project_id: projectId,
-            tags: [...userTags, PARTNER_RETURN_TAG],
-            occurred_at: new Date(occurredAt).toISOString(),
-            receipt_path: receiptPath,
-            payment_method: null,
-            status: "paid",
-          };
-        }
+      if (type === "expense" && spentBy === "partner") {
+        if (!projectId) return toast.error("Select a project when the expense was spent by partner");
+        if (!categoryId) return toast.error("Select an expense category");
+        const partnerAccount = await ensurePartnerAccount();
+        payload = {
+          type: "expense",
+          amount: amt,
+          category_id: subCategoryId || categoryId,
+          account_id: partnerAccount.id,
+          to_account_id: null,
+          vendor: vendor || null,
+          notes: notes || null,
+          project_id: projectId,
+          tags: [...userTags, PARTNER_SPEND_TAG],
+          occurred_at: new Date(occurredAt).toISOString(),
+          receipt_path: receiptPath,
+          payment_method: "Partner",
+          status: "paid",
+        };
+      } else if (type === "transfer" && toAccountId === "__partner") {
+        if (!accountId) return toast.error("Select the account you paid from");
+        if (!projectId) return toast.error("Select a project for money paid to partner");
+        const partnerAccount = await ensurePartnerAccount();
+        payload = {
+          type: "transfer",
+          amount: amt,
+          category_id: null,
+          account_id: accountId,
+          to_account_id: partnerAccount.id,
+          vendor: vendor || "Partner",
+          notes: notes || null,
+          project_id: projectId,
+          tags: [...userTags, PARTNER_ADVANCE_TAG],
+          occurred_at: new Date(occurredAt).toISOString(),
+          receipt_path: receiptPath,
+          payment_method: editing?.payment_method === "Partner Float" ? null : (editing?.payment_method ?? null),
+          status: "paid",
+        };
       } else {
-        if (type === "expense" && spentBy === "partner") {
-          if (!projectId) return toast.error("Select a project when the expense was spent by partner");
-          if (!categoryId) return toast.error("Select an expense category");
-          const system = await ensurePartnerAccounts();
-          payload = {
-            type: "expense",
-            amount: amt,
-            category_id: subCategoryId || categoryId,
-            account_id: system.float.id,
-            to_account_id: null,
-            vendor: vendor || null,
-            notes: notes || null,
-            project_id: projectId,
-            tags: [...userTags, PARTNER_SPEND_TAG],
-            occurred_at: new Date(occurredAt).toISOString(),
-            receipt_path: receiptPath,
-            payment_method: "Partner Float",
-            status: "paid",
-          };
-        } else {
-          if (!accountId) return toast.error("Select an account");
-          if (type === "transfer" && !toAccountId) return toast.error("Select destination account");
-          payload = {
-            type,
-            amount: amt,
-            category_id: type === "transfer" ? null : (subCategoryId || categoryId || null),
-            account_id: accountId,
-            to_account_id: type === "transfer" ? toAccountId : null,
-            vendor: vendor || null,
-            notes: notes || null,
-            project_id: projectId || null,
-            tags: userTags.length ? userTags : null,
-            occurred_at: new Date(occurredAt).toISOString(),
-            receipt_path: receiptPath,
-            payment_method: editing?.payment_method === "Partner Float" ? null : (editing?.payment_method ?? null),
-            status: "paid",
-          };
-        }
+        if (!accountId) return toast.error("Select an account");
+        if (type === "transfer" && !toAccountId) return toast.error("Select destination account");
+        payload = {
+          type,
+          amount: amt,
+          category_id: type === "transfer" ? null : (subCategoryId || categoryId || null),
+          account_id: accountId,
+          to_account_id: type === "transfer" ? toAccountId : null,
+          vendor: vendor || null,
+          notes: notes || null,
+          project_id: projectId || null,
+          tags: userTags.length ? userTags : null,
+          occurred_at: new Date(occurredAt).toISOString(),
+          receipt_path: receiptPath,
+          payment_method: editing?.payment_method === "Partner Float" || editing?.payment_method === "Partner" ? null : (editing?.payment_method ?? null),
+          status: "paid",
+        };
       }
 
       if (editing) await update.mutateAsync({ id: editing.id, ...payload });
@@ -524,50 +450,13 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
               <button
                 key={t}
                 type="button"
-                onClick={() => { setPurpose("normal"); setType(t); }}
+                onClick={() => setType(t)}
                 className="rounded-xl border px-3 py-2 text-sm font-medium capitalize transition-all data-[active=true]:border-primary data-[active=true]:bg-primary data-[active=true]:text-primary-foreground"
                 data-active={type === t}
               >
                 {t}
               </button>
             ))}
-          </div>
-
-          <div className="grid gap-2">
-            <Label>Purpose</Label>
-            <Select
-              value={purpose}
-              onValueChange={(value) => {
-                const next = value as TransactionPurpose;
-                setPurpose(next);
-                if (next === "normal") {
-                  if (purpose !== "normal") {
-                    setType("expense");
-                    setAccountId(normalAccounts[0]?.id ?? "");
-                    setToAccountId("");
-                  }
-                } else {
-                  setType("transfer");
-                  setCategoryId("");
-                  setSubCategoryId("");
-                  if (next === "partner_return") setToAccountId(normalAccounts[0]?.id ?? "");
-                }
-              }}
-            >
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="normal">Normal transaction</SelectItem>
-                <SelectItem value="partner_advance">Money given to partner</SelectItem>
-                <SelectItem value="partner_drawing">Partner drawing / profit advance</SelectItem>
-                <SelectItem value="partner_return">Money returned by partner</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-[11px] text-muted-foreground">
-              {purpose === "normal" && "Use this for normal income, expense or account transfer."}
-              {purpose === "partner_advance" && "Money handed to your partner is a transfer, not a project expense."}
-              {purpose === "partner_drawing" && "Money the partner keeps for himself reduces final settlement, not project profit."}
-              {purpose === "partner_return" && "Unused partner money comes back without changing project profit."}
-            </p>
           </div>
 
           <div className="grid gap-2">
@@ -582,9 +471,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
                   e.preventDefault();
-                  if (purpose === "partner_return") toAccountRef.current?.focus();
-                  else if (purpose === "partner_drawing") projectRef.current?.focus();
-                  else if (purpose === "normal" && type === "expense" && spentBy === "partner") categoryRef.current?.focus();
+                  if (type === "expense" && spentBy === "partner") categoryRef.current?.focus();
                   else accountRef.current?.focus();
                 }
               }}
@@ -592,7 +479,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
             />
           </div>
 
-          {purpose === "normal" && type === "expense" && (
+          {type === "expense" && (
             <div className="grid gap-2">
               <Label>Spent by</Label>
               <div className="grid grid-cols-2 gap-2">
@@ -616,28 +503,22 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
               <p className="text-[11px] text-muted-foreground">
                 {spentBy === "me"
                   ? "This expense is paid directly from your selected account."
-                  : "This same transaction will count as partner spend and reduce Partner Float automatically."}
+                  : "This same transaction counts as Spent by Partner. If he spends more than you paid him, the difference is treated as his own-pocket overspend."}
               </p>
             </div>
           )}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-2">
-              <Label>
-                {purpose === "partner_advance" ? "From account" : purpose === "partner_return" || purpose === "partner_drawing" || (purpose === "normal" && type === "expense" && spentBy === "partner") ? "Payment source" : "Account"}
-              </Label>
-              {purpose === "partner_return" || purpose === "partner_drawing" || (purpose === "normal" && type === "expense" && spentBy === "partner") ? (
-                <div className="flex h-9 items-center rounded-md border bg-muted/45 px-3 text-sm font-medium">Partner Float</div>
+              <Label>{type === "expense" && spentBy === "partner" ? "Paid by" : "Account"}</Label>
+              {type === "expense" && spentBy === "partner" ? (
+                <div className="flex h-9 items-center rounded-md border bg-muted/45 px-3 text-sm font-medium">Partner</div>
               ) : (
                 <Select
                   value={accountId}
                   onValueChange={(value) => {
                     setAccountId(value);
-                    window.setTimeout(() => {
-                      if (purpose === "partner_advance") projectRef.current?.focus();
-                      else if (type === "transfer") toAccountRef.current?.focus();
-                      else categoryRef.current?.focus();
-                    }, 0);
+                    window.setTimeout(() => (type === "transfer" ? toAccountRef.current : categoryRef.current)?.focus(), 0);
                   }}
                 >
                   <SelectTrigger ref={accountRef}><SelectValue placeholder="Select" /></SelectTrigger>
@@ -646,19 +527,9 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
               )}
             </div>
 
-            {purpose === "partner_advance" ? (
+            {type === "transfer" ? (
               <div className="grid gap-2">
-                <Label>Destination</Label>
-                <div className="flex h-9 items-center rounded-md border bg-muted/45 px-3 text-sm font-medium">Partner Float</div>
-              </div>
-            ) : purpose === "partner_drawing" ? (
-              <div className="grid gap-2">
-                <Label>Destination</Label>
-                <div className="flex h-9 items-center rounded-md border bg-muted/45 px-3 text-sm font-medium">Partner Drawings</div>
-              </div>
-            ) : purpose === "partner_return" ? (
-              <div className="grid gap-2">
-                <Label>Return to account</Label>
+                <Label>To</Label>
                 <Select
                   value={toAccountId}
                   onValueChange={(value) => {
@@ -667,21 +538,11 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
                   }}
                 >
                   <SelectTrigger ref={toAccountRef}><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>{normalAccounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-            ) : type === "transfer" ? (
-              <div className="grid gap-2">
-                <Label>To account</Label>
-                <Select
-                  value={toAccountId}
-                  onValueChange={(value) => {
-                    setToAccountId(value);
-                    window.setTimeout(() => projectRef.current?.focus(), 0);
-                  }}
-                >
-                  <SelectTrigger ref={toAccountRef}><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>{normalAccounts.filter((a) => a.id !== accountId).map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
+                  <SelectContent>
+                    <SelectItem value="__partner">Paid to Partner</SelectItem>
+                    <SelectSeparator />
+                    {normalAccounts.filter((a) => a.id !== accountId).map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
+                  </SelectContent>
                 </Select>
               </div>
             ) : (
@@ -715,7 +576,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
             )}
           </div>
 
-          {purpose === "normal" && type !== "transfer" && categoryId && (
+          {type !== "transfer" && categoryId && (
             <div className="grid gap-2">
               <div className="flex items-center justify-between">
                 <Label>Subcategory <span className="text-xs text-muted-foreground">(e.g. labour name)</span></Label>
@@ -748,7 +609,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
           <div className="grid gap-2">
             <Label>
               Project <span className="text-xs text-muted-foreground">
-                {purpose !== "normal" || (type === "expense" && spentBy === "partner") ? "(required)" : "(optional)"}
+                {(type === "expense" && spentBy === "partner") || (type === "transfer" && toAccountId === "__partner") ? "(required)" : "(optional)"}
               </span>
             </Label>
             <Select
