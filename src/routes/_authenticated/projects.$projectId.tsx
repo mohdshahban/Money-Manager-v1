@@ -208,7 +208,7 @@ function ProjectDetail() {
           <TransactionCollection transactions={filteredTxs} {...txProps} emptyMessage="No project transactions match these filters." />
         </TabsContent>
 
-        <TabsContent value="team" className="mt-0">\n          <TeamProjectView projectId={projectId} />\n        </TabsContent>\n\n        <TabsContent value="team" className="mt-0">
+        <TabsContent value="team" className="mt-0">
           <TeamProjectView projectId={projectId} />
         </TabsContent>
 
