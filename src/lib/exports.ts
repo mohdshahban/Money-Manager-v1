@@ -68,3 +68,106 @@ function downloadBlob(content: string, filename: string, type: string) {
   a.click();
   URL.revokeObjectURL(url);
 }
+
+export type PartnerActivityExportRow = {
+  Date: string;
+  Type: string;
+  Amount: number;
+  Category: string;
+  Subcategory: string;
+  Details: string;
+  Account: string;
+  Project: string;
+};
+
+function safeFilenamePart(value: string) {
+  return value
+    .trim()
+    .replace(/[^a-zA-Z0-9-_]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "project";
+}
+
+export function exportPartnerActivityCSV(rows: PartnerActivityExportRow[], projectName: string) {
+  if (rows.length === 0) return;
+  const headers = Object.keys(rows[0]);
+  const csv = [
+    headers.join(","),
+    ...rows.map((row) =>
+      headers
+        .map((header) => JSON.stringify((row as Record<string, unknown>)[header] ?? ""))
+        .join(","),
+    ),
+  ].join("\n");
+  downloadBlob(
+    csv,
+    `${safeFilenamePart(projectName)}-partner-activity.csv`,
+    "text/csv",
+  );
+}
+
+export async function exportPartnerActivityExcel(rows: PartnerActivityExportRow[], projectName: string) {
+  if (rows.length === 0) return;
+  const XLSX = await import("xlsx");
+  const ws = XLSX.utils.json_to_sheet(rows);
+  ws["!cols"] = [
+    { wch: 18 },
+    { wch: 18 },
+    { wch: 14 },
+    { wch: 20 },
+    { wch: 24 },
+    { wch: 48 },
+    { wch: 22 },
+    { wch: 28 },
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Partner Activity");
+  XLSX.writeFile(wb, `${safeFilenamePart(projectName)}-partner-activity.xlsx`);
+}
+
+export async function exportPartnerActivityPDF(
+  rows: PartnerActivityExportRow[],
+  projectName: string,
+  currency = "INR",
+) {
+  if (rows.length === 0) return;
+  const { jsPDF } = await import("jspdf");
+  const autoTable = (await import("jspdf-autotable")).default;
+  const doc = new jsPDF({ orientation: "landscape" });
+
+  doc.setFontSize(17);
+  doc.text("Partner Activity", 14, 16);
+  doc.setFontSize(10);
+  doc.text(projectName, 14, 23);
+  doc.text(`Generated ${format(new Date(), "PPP")}  •  Currency: ${currency}`, 14, 29);
+
+  const headers = ["Date", "Type", "Amount", "Category", "Subcategory", "Details", "Account", "Project"];
+  autoTable(doc, {
+    startY: 35,
+    head: [headers],
+    body: rows.map((row) => [
+      row.Date,
+      row.Type,
+      String(row.Amount),
+      row.Category,
+      row.Subcategory,
+      row.Details,
+      row.Account,
+      row.Project,
+    ]),
+    styles: { fontSize: 7, cellPadding: 2 },
+    headStyles: { fillColor: [255, 90, 95] },
+    columnStyles: {
+      0: { cellWidth: 30 },
+      1: { cellWidth: 28 },
+      2: { cellWidth: 22, halign: "right" },
+      3: { cellWidth: 28 },
+      4: { cellWidth: 34 },
+      5: { cellWidth: 72 },
+      6: { cellWidth: 34 },
+      7: { cellWidth: 38 },
+    },
+  });
+
+  doc.save(`${safeFilenamePart(projectName)}-partner-activity.pdf`);
+}

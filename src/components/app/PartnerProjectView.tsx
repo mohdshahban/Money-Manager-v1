@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ArrowUpRight, CircleDollarSign, Pencil, ShoppingCart, WalletCards } from "lucide-react";
+import { ArrowUpRight, CircleDollarSign, Download, Pencil, ShoppingCart, WalletCards } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TransactionDialog } from "@/components/app/TransactionDialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   useAccounts,
   useCategories,
@@ -15,6 +16,13 @@ import {
 } from "@/hooks/useFinance";
 import { useProfile } from "@/hooks/useProfile";
 import { formatCurrency } from "@/lib/format";
+import {
+  exportPartnerActivityCSV,
+  exportPartnerActivityExcel,
+  exportPartnerActivityPDF,
+  type PartnerActivityExportRow,
+} from "@/lib/exports";
+import { toast } from "sonner";
 import {
   PARTNER_ADVANCE_TAG,
   PARTNER_FLOAT_ACCOUNT_TYPE,
@@ -133,7 +141,13 @@ export function PartnerProjectView({ projectId }: Props) {
   }, [partnerPayments, partnerExpenses, projectTxs, project, partnerShare]);
 
   const categoryBreakdown = useMemo(() => {
-    const map = new Map<string, { name: string; amount: number; color: string }>();
+    const map = new Map<string, {
+      name: string;
+      amount: number;
+      color: string;
+      subcategories: Map<string, { name: string; amount: number }>;
+    }>();
+
     for (const tx of partnerExpenses) {
       const cat = categories.find((item) => item.id === tx.category_id);
       const root = rootCategory(cat, categories);
@@ -142,11 +156,27 @@ export function PartnerProjectView({ projectId }: Props) {
         name: root?.name ?? "Uncategorised",
         amount: 0,
         color: root?.color ?? "#64748B",
+        subcategories: new Map<string, { name: string; amount: number }>(),
       };
-      current.amount += Number(tx.amount);
+
+      const amount = Number(tx.amount);
+      current.amount += amount;
+
+      const subKey = cat?.parent_id ? cat.id : "__direct";
+      const subName = cat?.parent_id ? cat.name : "No subcategory";
+      const sub = current.subcategories.get(subKey) ?? { name: subName, amount: 0 };
+      sub.amount += amount;
+      current.subcategories.set(subKey, sub);
+
       map.set(key, current);
     }
-    return [...map.values()].sort((a, b) => b.amount - a.amount);
+
+    return [...map.values()]
+      .map((item) => ({
+        ...item,
+        subcategories: [...item.subcategories.values()].sort((a, b) => b.amount - a.amount),
+      }))
+      .sort((a, b) => b.amount - a.amount);
   }, [partnerExpenses, categories]);
 
   const ledgerRows = useMemo(() => {
@@ -156,6 +186,37 @@ export function PartnerProjectView({ projectId }: Props) {
     ];
     return rows.sort((a, b) => new Date(b.tx.occurred_at).getTime() - new Date(a.tx.occurred_at).getTime());
   }, [partnerPayments, partnerExpenses]);
+
+  const exportRows = useMemo<PartnerActivityExportRow[]>(() => {
+    if (!project) return [];
+    return ledgerRows.map(({ tx, kind }) => {
+      const category = categories.find((item) => item.id === tx.category_id);
+      const root = rootCategory(category, categories);
+      const source = accounts.find((item) => item.id === tx.account_id);
+      return {
+        Date: format(new Date(tx.occurred_at), "yyyy-MM-dd HH:mm"),
+        Type: kind === "paid" ? "Paid to Partner" : "Spent by Partner",
+        Amount: Number(tx.amount),
+        Category: kind === "expense" ? (root?.name ?? "Uncategorised") : "",
+        Subcategory: kind === "expense" && category?.parent_id ? category.name : "",
+        Details: [tx.vendor, tx.notes].filter(Boolean).join(" · "),
+        Account: kind === "paid" ? (source?.name ?? "") : "Partner",
+        Project: project.name,
+      };
+    });
+  }, [ledgerRows, categories, accounts, project]);
+
+  const exportActivity = async (formatType: "csv" | "xlsx" | "pdf") => {
+    if (!project || exportRows.length === 0) return toast.info("No partner activity to export");
+    try {
+      if (formatType === "csv") exportPartnerActivityCSV(exportRows, project.name);
+      else if (formatType === "xlsx") await exportPartnerActivityExcel(exportRows, project.name);
+      else await exportPartnerActivityPDF(exportRows, project.name, currency);
+      toast.success(`Partner activity exported as ${formatType === "xlsx" ? "Excel" : formatType.toUpperCase()}`);
+    } catch (error) {
+      toast.error((error as Error).message);
+    }
+  };
 
   if (!project) return null;
 
@@ -265,13 +326,28 @@ export function PartnerProjectView({ projectId }: Props) {
               {categoryBreakdown.map((item) => {
                 const pct = totals.spentByPartner > 0 ? (item.amount / totals.spentByPartner) * 100 : 0;
                 return (
-                  <div key={item.name}>
+                  <div key={item.name} className="rounded-xl border bg-muted/15 p-3">
                     <div className="flex items-center justify-between gap-3 text-sm">
-                      <span className="flex items-center gap-2 font-medium"><span className="h-2.5 w-2.5 rounded-full" style={{ background: item.color }} />{item.name}</span>
+                      <span className="flex items-center gap-2 font-semibold"><span className="h-2.5 w-2.5 rounded-full" style={{ background: item.color }} />{item.name}</span>
                       <span className="tabular-nums text-muted-foreground">{formatCurrency(item.amount, currency)} · {pct.toFixed(0)}%</span>
                     </div>
                     <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted">
                       <div className="h-full rounded-full" style={{ width: `${pct}%`, background: item.color }} />
+                    </div>
+
+                    <div className="mt-3 grid gap-2 border-l-2 pl-3" style={{ borderColor: item.color }}>
+                      {item.subcategories.map((sub) => {
+                        const subPct = item.amount > 0 ? (sub.amount / item.amount) * 100 : 0;
+                        return (
+                          <div key={sub.name} className="flex items-center justify-between gap-3 text-xs">
+                            <span className="truncate text-muted-foreground">{sub.name}</span>
+                            <span className="shrink-0 tabular-nums">
+                              {formatCurrency(sub.amount, currency)}
+                              <span className="ml-1 text-muted-foreground">· {subPct.toFixed(0)}%</span>
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 );
@@ -281,9 +357,23 @@ export function PartnerProjectView({ projectId }: Props) {
         </section>
 
         <section className="overflow-hidden rounded-2xl border bg-card shadow-[var(--shadow-soft)]">
-          <div className="border-b p-5">
-            <h3 className="font-semibold">Partner activity</h3>
-            <p className="mt-1 text-xs text-muted-foreground">Only money paid to the partner and actual project expenses spent by the partner.</p>
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b p-5">
+            <div>
+              <h3 className="font-semibold">Partner activity</h3>
+              <p className="mt-1 text-xs text-muted-foreground">Only money paid to the partner and actual project expenses spent by the partner.</p>
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-1.5" disabled={ledgerRows.length === 0}>
+                  <Download className="h-4 w-4" /> Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => void exportActivity("csv")}>CSV</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void exportActivity("xlsx")}>Excel (.xlsx)</DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void exportActivity("pdf")}>PDF</DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
           {ledgerRows.length === 0 ? (
             <div className="px-6 py-12 text-center text-sm text-muted-foreground">No partner activity yet.</div>
