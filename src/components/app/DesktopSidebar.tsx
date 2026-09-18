@@ -6,6 +6,7 @@ const primaryItems = [
   { to: "/dashboard", label: "Overview", icon: Home },
   { to: "/transactions", label: "Transactions", icon: ListChecks },
   { to: "/projects", label: "Projects", icon: FolderKanban },
+  { to: "/team", label: "Team", icon: Users },
   { to: "/reports", label: "Reports", icon: PieChart },
 ] as const;
 
