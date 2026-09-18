@@ -34,10 +34,10 @@ function AccountsPage() {
     visibleAccounts.forEach((a) => m.set(a.id, Number(a.opening_balance)));
     txs.forEach((t) => {
       const amt = Number(t.amount);
-      if (t.type === "income" && t.account_id) m.set(t.account_id, (m.get(t.account_id) ?? 0) + amt);
-      else if (t.type === "expense" && t.account_id) m.set(t.account_id, (m.get(t.account_id) ?? 0) - amt);
+      if (t.type === "income" && t.account_id && m.has(t.account_id)) m.set(t.account_id, (m.get(t.account_id) ?? 0) + amt);
+      else if (t.type === "expense" && t.account_id && m.has(t.account_id)) m.set(t.account_id, (m.get(t.account_id) ?? 0) - amt);
       else if (t.type === "transfer") {
-        if (t.account_id) m.set(t.account_id, (m.get(t.account_id) ?? 0) - amt);
+        if (t.account_id && m.has(t.account_id)) m.set(t.account_id, (m.get(t.account_id) ?? 0) - amt);
         if (t.to_account_id && m.has(t.to_account_id)) m.set(t.to_account_id, (m.get(t.to_account_id) ?? 0) + amt);
       }
     });
