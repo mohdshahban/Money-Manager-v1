@@ -6,6 +6,7 @@ const items = [
   { to: "/dashboard", label: "Home", icon: Home },
   { to: "/transactions", label: "Transactions", icon: ListChecks },
   { to: "/projects", label: "Projects", icon: FolderKanban },
+  { to: "/team", label: "Team", icon: Users },
   { to: "/reports", label: "Reports", icon: PieChart },
   { to: "/settings", label: "Settings", icon: Settings },
 ] as const;
