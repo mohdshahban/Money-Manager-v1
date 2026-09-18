@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { FolderKanban, Home, ListChecks, PieChart, Plus, Settings, WalletCards } from "lucide-react";
+import { FolderKanban, Home, ListChecks, PieChart, Plus, Settings, UsersRound, WalletCards } from "lucide-react";
 import { useProfile } from "@/hooks/useProfile";
 
 const primaryItems = [
