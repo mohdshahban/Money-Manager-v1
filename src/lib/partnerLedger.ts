@@ -11,7 +11,7 @@ export function isPartnerSystemAccountType(type: string) {
 }
 
 export function isExcludedFromAvailableBalance(type: string) {
-  return type === PARTNER_DRAWINGS_ACCOUNT_TYPE;
+  return isPartnerSystemAccountType(type);
 }
 
 export const PARTNER_SYSTEM_TAGS = new Set([
