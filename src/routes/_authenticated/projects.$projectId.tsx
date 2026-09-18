@@ -18,6 +18,7 @@ import { TeamProjectView } from "@/components/app/TeamProjectView";
 import { PartnerProjectView } from "@/components/app/PartnerProjectView";
 import { toast } from "sonner";
 import { endOfDay, endOfMonth, endOfWeek, format, startOfDay, startOfMonth, startOfWeek } from "date-fns";
+import { PARTNER_FLOAT_ACCOUNT_TYPE, PARTNER_SPEND_TAG, hasPartnerTag, withoutPartnerSystemTags } from "@/lib/partnerLedger";
 
 export const Route = createFileRoute("/_authenticated/projects/$projectId")({ component: ProjectDetail });
 
@@ -41,6 +42,7 @@ function ProjectDetail() {
   const [search, setSearch] = useState("");
   const [catFilter, setCatFilter] = useState("all");
   const [payFilter, setPayFilter] = useState("all");
+  const [spentByFilter, setSpentByFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState("all");
   const [dateRange, setDateRange] = useState("all");
   const [customFrom, setCustomFrom] = useState("");
@@ -50,7 +52,7 @@ function ProjectDetail() {
   const projectTxs = useMemo(() => txs.filter((tx) => tx.project_id === projectId), [txs, projectId]);
   const rootCats = useMemo(() => categories.filter((c) => !c.parent_id), [categories]);
   const payModes = useMemo(() => Array.from(new Set(projectTxs.map((t) => t.payment_method).filter(Boolean) as string[])).sort(), [projectTxs]);
-  const allTags = useMemo(() => Array.from(new Set(projectTxs.flatMap((t) => t.tags ?? []))).sort(), [projectTxs]);
+  const allTags = useMemo(() => Array.from(new Set(projectTxs.flatMap((t) => withoutPartnerSystemTags(t.tags)))).sort(), [projectTxs]);
 
   const dateBounds = useMemo(() => {
     const now = new Date();
@@ -67,6 +69,12 @@ function ProjectDetail() {
       if ((c?.parent_id ?? c?.id ?? null) !== catFilter) return false;
     }
     if (payFilter !== "all" && (t.payment_method ?? "") !== payFilter) return false;
+    if (spentByFilter !== "all") {
+      const account = accounts.find((a) => a.id === t.account_id);
+      const partnerSpent = t.type === "expense" && (account?.type === PARTNER_FLOAT_ACCOUNT_TYPE || hasPartnerTag(t.tags, PARTNER_SPEND_TAG));
+      if (spentByFilter === "partner" && !partnerSpent) return false;
+      if (spentByFilter === "me" && (t.type !== "expense" || partnerSpent)) return false;
+    }
     if (tagFilter !== "all" && !(t.tags ?? []).includes(tagFilter)) return false;
     if (dateBounds.from && new Date(t.occurred_at) < dateBounds.from) return false;
     if (dateBounds.to && new Date(t.occurred_at) > dateBounds.to) return false;
@@ -77,7 +85,7 @@ function ProjectDetail() {
       if (![t.vendor, t.notes, cat, acc, (t.tags ?? []).join(" "), String(t.amount)].join(" ").toLowerCase().includes(q)) return false;
     }
     return true;
-  }), [projectTxs, catFilter, payFilter, tagFilter, dateBounds, search, categories, accounts]);
+  }), [projectTxs, catFilter, payFilter, spentByFilter, tagFilter, dateBounds, search, categories, accounts]);
 
   const stats = useMemo(() => {
     let spent = 0, received = 0;
@@ -114,8 +122,8 @@ function ProjectDetail() {
   const budgetBase = budget > 0 ? budget : quoted;
   const budgetPct = budgetBase > 0 ? Math.min(100, (stats.spent / budgetBase) * 100) : 0;
   const statusTone = project.status === "active" ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" : project.status === "completed" ? "bg-blue-500/10 text-blue-600 border-blue-500/30" : project.status === "on_hold" ? "bg-amber-500/10 text-amber-600 border-amber-500/30" : project.status === "cancelled" ? "bg-destructive/10 text-destructive border-destructive/30" : "bg-muted text-muted-foreground border-border";
-  const activeFilters = [catFilter !== "all", payFilter !== "all", tagFilter !== "all", dateRange !== "all", !!search].filter(Boolean).length;
-  const clearFilters = () => { setSearch(""); setCatFilter("all"); setPayFilter("all"); setTagFilter("all"); setDateRange("all"); setCustomFrom(""); setCustomTo(""); };
+  const activeFilters = [catFilter !== "all", payFilter !== "all", spentByFilter !== "all", tagFilter !== "all", dateRange !== "all", !!search].filter(Boolean).length;
+  const clearFilters = () => { setSearch(""); setCatFilter("all"); setPayFilter("all"); setSpentByFilter("all"); setTagFilter("all"); setDateRange("all"); setCustomFrom(""); setCustomTo(""); };
   const paymentTxs = projectTxs.filter((t) => t.type === "income");
   const receiptTxs = projectTxs.filter((t) => !!t.receipt_path);
 
@@ -196,10 +204,11 @@ function ProjectDetail() {
 
         <TabsContent value="transactions" className="mt-0 grid gap-4">
           <div className="sticky top-0 z-20 rounded-2xl border bg-background/92 p-3 shadow-[var(--shadow-soft)] backdrop-blur-xl lg:top-2">
-            <div className="grid gap-2 xl:grid-cols-[minmax(260px,1.5fr)_repeat(4,minmax(150px,0.75fr))_auto]">
+            <div className="grid gap-2 xl:grid-cols-[minmax(240px,1.35fr)_repeat(5,minmax(135px,0.75fr))_auto]">
               <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" placeholder="Search vendor, note, tag or amount…" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
               <Select value={catFilter} onValueChange={setCatFilter}><SelectTrigger><SelectValue placeholder="All categories" /></SelectTrigger><SelectContent><SelectItem value="all">All categories</SelectItem>{rootCats.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
               <Select value={payFilter} onValueChange={setPayFilter}><SelectTrigger><SelectValue placeholder="All payment modes" /></SelectTrigger><SelectContent><SelectItem value="all">All payment modes</SelectItem>{payModes.map((mode) => <SelectItem key={mode} value={mode}>{mode}</SelectItem>)}</SelectContent></Select>
+              <Select value={spentByFilter} onValueChange={setSpentByFilter}><SelectTrigger><SelectValue placeholder="Spent by" /></SelectTrigger><SelectContent><SelectItem value="all">Spent by · Everyone</SelectItem><SelectItem value="me">Spent by · Me</SelectItem><SelectItem value="partner">Spent by · Partner</SelectItem></SelectContent></Select>
               <Select value={tagFilter} onValueChange={setTagFilter}><SelectTrigger><SelectValue placeholder="All tags" /></SelectTrigger><SelectContent><SelectItem value="all">All tags</SelectItem>{allTags.map((tag) => <SelectItem key={tag} value={tag}>#{tag}</SelectItem>)}</SelectContent></Select>
               <Select value={dateRange} onValueChange={setDateRange}><SelectTrigger><SelectValue placeholder="All dates" /></SelectTrigger><SelectContent><SelectItem value="all">All dates</SelectItem><SelectItem value="today">Today</SelectItem><SelectItem value="week">This week</SelectItem><SelectItem value="month">This month</SelectItem><SelectItem value="custom">Custom</SelectItem></SelectContent></Select>
               {activeFilters > 0 ? <Button variant="ghost" size="sm" className="gap-1.5" onClick={clearFilters}><X className="h-4 w-4" /> Clear {activeFilters}</Button> : <div />}
