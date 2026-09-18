@@ -103,8 +103,9 @@ function ProjectDetail() {
         const subMap = bySub.get(rootId) ?? new Map<string, number>();
         subMap.set(subId, (subMap.get(subId) ?? 0) + amount);
         bySub.set(rootId, subMap);
-        if ((tx.tags ?? []).length === 0) byTag.set("untagged", (byTag.get("untagged") ?? 0) + amount);
-        else (tx.tags ?? []).forEach((tag) => byTag.set(tag, (byTag.get(tag) ?? 0) + amount));
+        const visibleTags = withoutPartnerSystemTags(tx.tags);
+        if (visibleTags.length === 0) byTag.set("untagged", (byTag.get("untagged") ?? 0) + amount);
+        else visibleTags.forEach((tag) => byTag.set(tag, (byTag.get(tag) ?? 0) + amount));
       } else if (tx.type === "income") received += Number(tx.amount);
     }
     return { spent, received, byCategory, bySub, byTag };
