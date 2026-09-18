@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { ArrowLeft, BarChart3, Edit3, FileText, LayoutList, Pencil, ReceiptText, Search, Star, Table2, Trash2, WalletCards, X } from "lucide-react";
+import { ArrowLeft, BarChart3, Edit3, FileText, LayoutList, Pencil, ReceiptText, Search, Star, Table2, Trash2, UsersRound, WalletCards, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,7 +13,7 @@ import { useProfile } from "@/hooks/useProfile";
 import { formatCurrency } from "@/lib/format";
 import { TransactionDialog } from "@/components/app/TransactionDialog";
 import { TransactionCollection, type TransactionViewMode } from "@/components/app/TransactionCollection";
-import { ReceiptIndicator } from "@/components/app/ReceiptIndicator";
+import { ReceiptIndicator } from "@/components/app/ReceiptIndicator";\nimport { TeamProjectView } from "@/components/app/TeamProjectView";
 import { toast } from "sonner";
 import { endOfDay, endOfMonth, endOfWeek, format, startOfDay, startOfMonth, startOfWeek } from "date-fns";
 
@@ -206,7 +206,7 @@ function ProjectDetail() {
           <TransactionCollection transactions={filteredTxs} {...txProps} emptyMessage="No project transactions match these filters." />
         </TabsContent>
 
-        <TabsContent value="analytics" className="mt-0 grid gap-4 xl:grid-cols-2">
+        <TabsContent value="team" className="mt-0">\n          <TeamProjectView projectId={projectId} />\n        </TabsContent>\n\n        <TabsContent value="analytics" className="mt-0 grid gap-4 xl:grid-cols-2">
           <BreakdownCard title="Spend by category">
             {stats.byCategory.size === 0 ? <Empty text="No expenses yet." /> : [...stats.byCategory.entries()].sort((a, b) => b[1] - a[1]).map(([catId, amount]) => {
               const cat = categories.find((c) => c.id === catId);
