@@ -49,10 +49,10 @@ function Dashboard() {
     balanceAccounts.forEach((a) => accBal.set(a.id, Number(a.opening_balance)));
     txs.forEach((t) => {
       const amount = Number(t.amount);
-      if (t.type === "income" && t.account_id) accBal.set(t.account_id, (accBal.get(t.account_id) ?? 0) + amount);
-      else if (t.type === "expense" && t.account_id) accBal.set(t.account_id, (accBal.get(t.account_id) ?? 0) - amount);
+      if (t.type === "income" && t.account_id && accBal.has(t.account_id)) accBal.set(t.account_id, (accBal.get(t.account_id) ?? 0) + amount);
+      else if (t.type === "expense" && t.account_id && accBal.has(t.account_id)) accBal.set(t.account_id, (accBal.get(t.account_id) ?? 0) - amount);
       else if (t.type === "transfer") {
-        if (t.account_id) accBal.set(t.account_id, (accBal.get(t.account_id) ?? 0) - amount);
+        if (t.account_id && accBal.has(t.account_id)) accBal.set(t.account_id, (accBal.get(t.account_id) ?? 0) - amount);
         if (t.to_account_id && accBal.has(t.to_account_id)) accBal.set(t.to_account_id, (accBal.get(t.to_account_id) ?? 0) + amount);
       }
     });
