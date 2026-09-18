@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ArrowUpRight, HandCoins, Pencil, ShoppingCart, WalletCards } from "lucide-react";
+import { ArrowUpRight, CircleDollarSign, Pencil, ShoppingCart, WalletCards } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,11 +16,13 @@ import {
 import { useProfile } from "@/hooks/useProfile";
 import { formatCurrency } from "@/lib/format";
 import {
-  PARTNER_DRAWINGS_ACCOUNT_TYPE,
+  PARTNER_ADVANCE_TAG,
   PARTNER_FLOAT_ACCOUNT_TYPE,
+  PARTNER_SPEND_TAG,
+  hasPartnerTag,
 } from "@/lib/partnerLedger";
 
-type LedgerKind = "advance" | "expense" | "drawing" | "return";
+type LedgerKind = "paid" | "expense";
 
 type Props = {
   projectId: string;
@@ -40,8 +42,7 @@ export function PartnerProjectView({ projectId }: Props) {
   const { data: allTx = [] } = useTransactions();
 
   const project = projects.find((item) => item.id === projectId);
-  const floatAccount = accounts.find((item) => item.type === PARTNER_FLOAT_ACCOUNT_TYPE) ?? null;
-  const drawingsAccount = accounts.find((item) => item.type === PARTNER_DRAWINGS_ACCOUNT_TYPE) ?? null;
+  const partnerAccount = accounts.find((item) => item.type === PARTNER_FLOAT_ACCOUNT_TYPE) ?? null;
 
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [editOpen, setEditOpen] = useState(false);
@@ -61,87 +62,103 @@ export function PartnerProjectView({ projectId }: Props) {
 
   const projectTxs = useMemo(() => allTx.filter((tx) => tx.project_id === projectId), [allTx, projectId]);
 
-  const ledger = useMemo(() => {
-    if (!floatAccount || !drawingsAccount) {
-      return { advances: [] as Transaction[], expenses: [] as Transaction[], drawings: [] as Transaction[], returns: [] as Transaction[] };
-    }
-    const advances = projectTxs.filter((tx) => tx.type === "transfer" && tx.to_account_id === floatAccount.id);
-    const expenses = projectTxs.filter((tx) => tx.type === "expense" && tx.account_id === floatAccount.id);
-    const drawings = projectTxs.filter((tx) => tx.type === "transfer" && tx.account_id === floatAccount.id && tx.to_account_id === drawingsAccount.id);
-    const returns = projectTxs.filter((tx) => tx.type === "transfer" && tx.account_id === floatAccount.id && tx.to_account_id !== drawingsAccount.id);
-    return { advances, expenses, drawings, returns };
-  }, [projectTxs, floatAccount, drawingsAccount]);
+  const partnerPayments = useMemo(
+    () => projectTxs.filter(
+      (tx) =>
+        tx.type === "transfer" &&
+        (
+          hasPartnerTag(tx.tags, PARTNER_ADVANCE_TAG) ||
+          (!!partnerAccount && tx.to_account_id === partnerAccount.id)
+        ),
+    ),
+    [projectTxs, partnerAccount],
+  );
+
+  const partnerExpenses = useMemo(
+    () => projectTxs.filter(
+      (tx) =>
+        tx.type === "expense" &&
+        (
+          hasPartnerTag(tx.tags, PARTNER_SPEND_TAG) ||
+          (!!partnerAccount && tx.account_id === partnerAccount.id)
+        ),
+    ),
+    [projectTxs, partnerAccount],
+  );
 
   const totals = useMemo(() => {
     const sum = (rows: Transaction[]) => rows.reduce((value, tx) => value + Number(tx.amount), 0);
-    const given = sum(ledger.advances);
-    const partnerExpenses = sum(ledger.expenses);
-    const drawings = sum(ledger.drawings);
-    const returned = sum(ledger.returns);
-    const balance = given - partnerExpenses - drawings - returned;
-    const allExpenses = projectTxs.filter((tx) => tx.type === "expense").reduce((value, tx) => value + Number(tx.amount), 0);
-    const received = projectTxs.filter((tx) => tx.type === "income").reduce((value, tx) => value + Number(tx.amount), 0);
-    const directOwnerSpend = Math.max(0, allExpenses - partnerExpenses);
+    const paidToPartner = sum(partnerPayments);
+    const spentByPartner = sum(partnerExpenses);
+    const partnerBalance = paidToPartner - spentByPartner;
+    const stillWithPartner = Math.max(0, partnerBalance);
+    const ownPocketOverspend = Math.max(0, -partnerBalance);
+
+    const allExpenses = projectTxs
+      .filter((tx) => tx.type === "expense")
+      .reduce((value, tx) => value + Number(tx.amount), 0);
+    const received = projectTxs
+      .filter((tx) => tx.type === "income")
+      .reduce((value, tx) => value + Number(tx.amount), 0);
+
+    const directOwnerSpend = Math.max(0, allExpenses - spentByPartner);
     const quoted = Number(project?.quoted_amount ?? 0);
     const realizedProfit = received - allExpenses;
     const projectedProfit = quoted - allExpenses;
-    const partnerEntitlement = projectedProfit * (partnerShare / 100);
-    const ownerEntitlement = projectedProfit - partnerEntitlement;
-    const partnerOutOfPocket = Math.max(0, -balance);
-    const partnerStillDue = partnerEntitlement - drawings + partnerOutOfPocket;
+    const partnerProfitShare = projectedProfit * (partnerShare / 100);
+    const ownerProfitShare = projectedProfit - partnerProfitShare;
+
+    // Single-balance settlement:
+    // partner due = base profit share - (money paid to partner - money actually spent by partner)
+    const partnerStillDue = partnerProfitShare - partnerBalance;
+
     return {
-      given,
-      partnerExpenses,
-      drawings,
-      returned,
-      balance,
+      paidToPartner,
+      spentByPartner,
+      partnerBalance,
+      stillWithPartner,
+      ownPocketOverspend,
       allExpenses,
       received,
       directOwnerSpend,
       quoted,
       realizedProfit,
       projectedProfit,
-      partnerEntitlement,
-      ownerEntitlement,
-      partnerOutOfPocket,
+      partnerProfitShare,
+      ownerProfitShare,
       partnerStillDue,
     };
-  }, [ledger, projectTxs, project, partnerShare]);
+  }, [partnerPayments, partnerExpenses, projectTxs, project, partnerShare]);
 
   const categoryBreakdown = useMemo(() => {
     const map = new Map<string, { name: string; amount: number; color: string }>();
-    for (const tx of ledger.expenses) {
+    for (const tx of partnerExpenses) {
       const cat = categories.find((item) => item.id === tx.category_id);
       const root = rootCategory(cat, categories);
       const key = root?.id ?? "uncategorised";
-      const current = map.get(key) ?? { name: root?.name ?? "Uncategorised", amount: 0, color: root?.color ?? "#64748B" };
+      const current = map.get(key) ?? {
+        name: root?.name ?? "Uncategorised",
+        amount: 0,
+        color: root?.color ?? "#64748B",
+      };
       current.amount += Number(tx.amount);
       map.set(key, current);
     }
     return [...map.values()].sort((a, b) => b.amount - a.amount);
-  }, [ledger.expenses, categories]);
+  }, [partnerExpenses, categories]);
 
   const ledgerRows = useMemo(() => {
-    if (!floatAccount || !drawingsAccount) return [];
-    return projectTxs
-      .filter((tx) =>
-        (tx.type === "expense" && tx.account_id === floatAccount.id) ||
-        (tx.type === "transfer" && (tx.account_id === floatAccount.id || tx.to_account_id === floatAccount.id)),
-      )
-      .map((tx) => {
-        let kind: LedgerKind = "expense";
-        if (tx.type === "transfer" && tx.to_account_id === floatAccount.id) kind = "advance";
-        else if (tx.type === "transfer" && tx.account_id === floatAccount.id && tx.to_account_id === drawingsAccount.id) kind = "drawing";
-        else if (tx.type === "transfer" && tx.account_id === floatAccount.id) kind = "return";
-        return { tx, kind };
-      })
-      .sort((a, b) => new Date(b.tx.occurred_at).getTime() - new Date(a.tx.occurred_at).getTime());
-  }, [projectTxs, floatAccount, drawingsAccount]);
+    const rows: Array<{ tx: Transaction; kind: LedgerKind }> = [
+      ...partnerPayments.map((tx) => ({ tx, kind: "paid" as const })),
+      ...partnerExpenses.map((tx) => ({ tx, kind: "expense" as const })),
+    ];
+    return rows.sort((a, b) => new Date(b.tx.occurred_at).getTime() - new Date(a.tx.occurred_at).getTime());
+  }, [partnerPayments, partnerExpenses]);
 
   if (!project) return null;
 
-  const balanceLabel = totals.balance >= 0 ? "Partner holds" : "You owe partner";
-  const balanceTone = totals.balance >= 0 ? "text-amber-600" : "text-destructive";
+  const balanceLabel = totals.partnerBalance >= 0 ? "Still with partner" : "Partner spent from own pocket";
+  const balanceTone = totals.partnerBalance >= 0 ? "text-amber-600" : "text-destructive";
 
   return (
     <div className="grid gap-5">
@@ -149,38 +166,40 @@ export function PartnerProjectView({ projectId }: Props) {
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">Partner ledger</p>
-            <h3 className="mt-1 text-xl font-semibold">Project money held and spent by your execution partner</h3>
-            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Money you give the partner is tracked as a transfer, not an expense. Only actual material/labour/project purchases reduce project profit.</p>
+            <h3 className="mt-1 text-xl font-semibold">One balance for partner payments and partner spending</h3>
+            <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+              Transfer money using <span className="font-medium text-foreground">Paid to Partner</span>. Mark actual project purchases as <span className="font-medium text-foreground">Spent by → Partner</span>. The difference automatically adjusts final settlement.
+            </p>
           </div>
           <div className="max-w-md rounded-xl border bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
-            Add or edit everything from the normal transaction dialog. Use <span className="font-medium text-foreground">Purpose</span> for partner advances/drawings/returns and <span className="font-medium text-foreground">Spent by → Partner</span> for actual project expenses.
+            Formula: <span className="font-medium text-foreground">Partner balance = Paid to Partner − Spent by Partner</span>. A negative balance means he spent his own money and must be reimbursed.
           </div>
         </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric label="Given to partner" value={formatCurrency(totals.given, currency)} icon={<ArrowUpRight className="h-4 w-4" />} />
-        <Metric label="Partner expenses" value={formatCurrency(totals.partnerExpenses, currency)} icon={<ShoppingCart className="h-4 w-4" />} />
-        <Metric label={balanceLabel} value={formatCurrency(Math.abs(totals.balance), currency)} icon={<WalletCards className="h-4 w-4" />} valueClass={balanceTone} />
-        <Metric label="Partner drawings" value={formatCurrency(totals.drawings, currency)} icon={<HandCoins className="h-4 w-4" />} />
+        <Metric label="Paid to partner" value={formatCurrency(totals.paidToPartner, currency)} icon={<ArrowUpRight className="h-4 w-4" />} />
+        <Metric label="Spent by partner" value={formatCurrency(totals.spentByPartner, currency)} icon={<ShoppingCart className="h-4 w-4" />} />
+        <Metric label={balanceLabel} value={formatCurrency(Math.abs(totals.partnerBalance), currency)} icon={<WalletCards className="h-4 w-4" />} valueClass={balanceTone} />
+        <Metric label="Partner still due" value={formatCurrency(totals.partnerStillDue, currency)} icon={<CircleDollarSign className="h-4 w-4" />} valueClass="text-primary" />
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
         <section className="rounded-2xl border bg-card p-5 shadow-[var(--shadow-soft)]">
           <div className="mb-4">
             <h3 className="font-semibold">Project profitability</h3>
-            <p className="mt-1 text-xs text-muted-foreground">Partner advances and drawings are transfers, so they are not counted twice as project costs.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Only actual project expenses reduce project profit. Money paid to the partner is settlement/working money, not a second project cost.</p>
           </div>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <SmallMetric label="Client received" value={formatCurrency(totals.received, currency)} />
             <SmallMetric label="Total actual cost" value={formatCurrency(totals.allExpenses, currency)} />
             <SmallMetric label="Paid directly by you" value={formatCurrency(totals.directOwnerSpend, currency)} />
-            <SmallMetric label="Paid by partner" value={formatCurrency(totals.partnerExpenses, currency)} />
+            <SmallMetric label="Spent by partner" value={formatCurrency(totals.spentByPartner, currency)} />
             <SmallMetric label="Realized profit so far" value={formatCurrency(totals.realizedProfit, currency)} valueClass={totals.realizedProfit >= 0 ? "text-[color:var(--success)]" : "text-destructive"} />
             <SmallMetric label="Projected final profit" value={formatCurrency(totals.projectedProfit, currency)} valueClass={totals.projectedProfit >= 0 ? "text-[color:var(--success)]" : "text-destructive"} />
           </div>
           <div className="mt-4 rounded-xl bg-muted/45 p-3 text-xs text-muted-foreground">
-            Projected final profit = quoted amount ({formatCurrency(totals.quoted, currency)}) minus all actual project expenses. Realized profit uses money received so far.
+            Projected final profit = quoted amount ({formatCurrency(totals.quoted, currency)}) minus all actual project expenses.
           </div>
         </section>
 
@@ -188,25 +207,46 @@ export function PartnerProjectView({ projectId }: Props) {
           <div className="flex items-start justify-between gap-4">
             <div>
               <h3 className="font-semibold">Profit settlement</h3>
-              <p className="mt-1 text-xs text-muted-foreground">Use the partner's agreed profit percentage. This setting is saved on this device.</p>
+              <p className="mt-1 text-xs text-muted-foreground">Partner balance is automatically added to or deducted from his base profit share.</p>
             </div>
             <div className="w-28">
               <Label className="text-[10px] uppercase tracking-wide text-muted-foreground">Partner %</Label>
               <Input className="mt-1 h-9" type="number" min={0} max={100} value={partnerShare} onChange={(e) => savePartnerShare(Number(e.target.value))} />
             </div>
           </div>
+
           <div className="mt-4 grid gap-2">
-            <SettlementRow label="Your projected share" value={formatCurrency(totals.ownerEntitlement, currency)} />
-            <SettlementRow label="Partner projected share" value={formatCurrency(totals.partnerEntitlement, currency)} />
-            <SettlementRow label="Already taken as drawings" value={formatCurrency(totals.drawings, currency)} />
-            {totals.partnerOutOfPocket > 0 && <SettlementRow label="Reimburse partner (own money spent)" value={formatCurrency(totals.partnerOutOfPocket, currency)} />}
+            <SettlementRow label="Your projected profit share" value={formatCurrency(totals.ownerProfitShare, currency)} />
+            <SettlementRow label="Partner base profit share" value={formatCurrency(totals.partnerProfitShare, currency)} />
+            <SettlementRow label="Paid to partner" value={formatCurrency(totals.paidToPartner, currency)} />
+            <SettlementRow label="Spent by partner" value={formatCurrency(totals.spentByPartner, currency)} />
+
+            {totals.stillWithPartner > 0 && (
+              <SettlementRow
+                label="Less: still with partner"
+                value={`−${formatCurrency(totals.stillWithPartner, currency)}`}
+                valueClass="text-amber-600"
+              />
+            )}
+            {totals.ownPocketOverspend > 0 && (
+              <SettlementRow
+                label="Add: partner own-pocket overspend"
+                value={`+${formatCurrency(totals.ownPocketOverspend, currency)}`}
+                valueClass="text-destructive"
+              />
+            )}
+
             <div className="my-1 border-t" />
             <SettlementRow
-              label={totals.partnerStillDue >= 0 ? "Partner still due" : "Partner overdrawn"}
+              label={totals.partnerStillDue >= 0 ? "Partner still due" : "Partner already overpaid"}
               value={formatCurrency(Math.abs(totals.partnerStillDue), currency)}
               strong
               valueClass={totals.partnerStillDue >= 0 ? "text-primary" : "text-destructive"}
             />
+          </div>
+
+          <div className="mt-4 rounded-xl border bg-muted/35 p-3 text-xs text-muted-foreground">
+            Example: base share ₹1,00,000, paid ₹5,000, spent ₹10,000 → own-pocket overspend ₹5,000 → partner still due ₹1,05,000.
           </div>
         </section>
       </div>
@@ -214,20 +254,22 @@ export function PartnerProjectView({ projectId }: Props) {
       <div className="grid gap-4 xl:grid-cols-[0.85fr_1.15fr]">
         <section className="rounded-2xl border bg-card p-5 shadow-[var(--shadow-soft)]">
           <h3 className="font-semibold">Partner spending by category</h3>
-          <p className="mt-1 text-xs text-muted-foreground">Material, labour and every other category paid from Partner Float.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Actual material, labour and other project expenses marked Spent by Partner.</p>
           {categoryBreakdown.length === 0 ? (
             <p className="py-10 text-center text-sm text-muted-foreground">No partner expenses recorded yet.</p>
           ) : (
             <div className="mt-4 grid gap-3">
               {categoryBreakdown.map((item) => {
-                const pct = totals.partnerExpenses > 0 ? (item.amount / totals.partnerExpenses) * 100 : 0;
+                const pct = totals.spentByPartner > 0 ? (item.amount / totals.spentByPartner) * 100 : 0;
                 return (
                   <div key={item.name}>
                     <div className="flex items-center justify-between gap-3 text-sm">
                       <span className="flex items-center gap-2 font-medium"><span className="h-2.5 w-2.5 rounded-full" style={{ background: item.color }} />{item.name}</span>
                       <span className="tabular-nums text-muted-foreground">{formatCurrency(item.amount, currency)} · {pct.toFixed(0)}%</span>
                     </div>
-                    <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted"><div className="h-full rounded-full" style={{ width: `${pct}%`, background: item.color }} /></div>
+                    <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-muted">
+                      <div className="h-full rounded-full" style={{ width: `${pct}%`, background: item.color }} />
+                    </div>
                   </div>
                 );
               })}
@@ -237,11 +279,11 @@ export function PartnerProjectView({ projectId }: Props) {
 
         <section className="overflow-hidden rounded-2xl border bg-card shadow-[var(--shadow-soft)]">
           <div className="border-b p-5">
-            <h3 className="font-semibold">Partner ledger activity</h3>
-            <p className="mt-1 text-xs text-muted-foreground">Advances, actual partner expenses, drawings and returned money for this project.</p>
+            <h3 className="font-semibold">Partner activity</h3>
+            <p className="mt-1 text-xs text-muted-foreground">Only money paid to the partner and actual project expenses spent by the partner.</p>
           </div>
           {ledgerRows.length === 0 ? (
-            <div className="px-6 py-12 text-center text-sm text-muted-foreground">No partner ledger activity yet.</div>
+            <div className="px-6 py-12 text-center text-sm text-muted-foreground">No partner activity yet.</div>
           ) : (
             <div className="max-h-[520px] overflow-auto">
               <table className="w-full min-w-[720px] text-sm">
@@ -252,17 +294,25 @@ export function PartnerProjectView({ projectId }: Props) {
                   {ledgerRows.map(({ tx, kind }) => {
                     const category = categories.find((item) => item.id === tx.category_id);
                     const source = accounts.find((item) => item.id === tx.account_id);
-                    const destination = accounts.find((item) => item.id === tx.to_account_id);
                     const detail = kind === "expense"
                       ? [rootCategory(category, categories)?.name, category?.parent_id ? category.name : null, tx.vendor, tx.notes].filter(Boolean).join(" · ")
-                      : [source?.name, destination?.name, tx.notes].filter(Boolean).join(" → ");
+                      : [source?.name, "Paid to Partner", tx.notes].filter(Boolean).join(" → ");
                     return (
                       <tr key={tx.id} className="hover:bg-muted/35">
-                        <td className="whitespace-nowrap px-4 py-3"><p className="font-medium">{format(new Date(tx.occurred_at), "dd MMM yyyy")}</p><p className="text-xs text-muted-foreground">{format(new Date(tx.occurred_at), "HH:mm")}</p></td>
+                        <td className="whitespace-nowrap px-4 py-3">
+                          <p className="font-medium">{format(new Date(tx.occurred_at), "dd MMM yyyy")}</p>
+                          <p className="text-xs text-muted-foreground">{format(new Date(tx.occurred_at), "HH:mm")}</p>
+                        </td>
                         <td className="px-4 py-3"><LedgerBadge kind={kind} /></td>
                         <td className="max-w-[380px] px-4 py-3 text-muted-foreground">{detail || "—"}</td>
-                        <td className={`whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums ${kind === "advance" ? "text-[color:var(--success)]" : "text-primary"}`}>{formatCurrency(Number(tx.amount), currency)}</td>
-                        <td className="px-4 py-2 text-right"><Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingTx(tx); setEditOpen(true); }}><Pencil className="h-4 w-4" /></Button></td>
+                        <td className={`whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums ${kind === "paid" ? "text-[color:var(--success)]" : "text-primary"}`}>
+                          {formatCurrency(Number(tx.amount), currency)}
+                        </td>
+                        <td className="px-4 py-2 text-right">
+                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingTx(tx); setEditOpen(true); }}>
+                            <Pencil className="h-4 w-4" />
+                          </Button>
+                        </td>
                       </tr>
                     );
                   })}
@@ -298,12 +348,8 @@ function SettlementRow({ label, value, strong = false, valueClass = "" }: { labe
 }
 
 function LedgerBadge({ kind }: { kind: LedgerKind }) {
-  const meta = {
-    advance: { label: "Given", className: "bg-emerald-500/10 text-emerald-600" },
-    expense: { label: "Expense", className: "bg-primary/10 text-primary" },
-    drawing: { label: "Drawing", className: "bg-amber-500/10 text-amber-700" },
-    return: { label: "Returned", className: "bg-blue-500/10 text-blue-600" },
-  }[kind];
+  const meta = kind === "paid"
+    ? { label: "Paid", className: "bg-emerald-500/10 text-emerald-600" }
+    : { label: "Spent", className: "bg-primary/10 text-primary" };
   return <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${meta.className}`}>{meta.label}</span>;
 }
-
