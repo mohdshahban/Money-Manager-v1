@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, ListChecks, PieChart, FolderKanban, Settings, Plus, UsersRound } from "lucide-react";
+import { Home, ListChecks, PieChart, FolderKanban, Settings, Plus, Users } from "lucide-react";
 import { motion } from "framer-motion";
 
 const items = [
