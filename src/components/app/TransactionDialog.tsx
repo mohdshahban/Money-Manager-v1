@@ -582,7 +582,10 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
                   e.preventDefault();
-                  accountRef.current?.focus();
+                  if (purpose === "partner_return") toAccountRef.current?.focus();
+                  else if (purpose === "partner_drawing") projectRef.current?.focus();
+                  else if (purpose === "normal" && type === "expense" && spentBy === "partner") categoryRef.current?.focus();
+                  else accountRef.current?.focus();
                 }
               }}
               className="h-12 text-2xl font-semibold"
@@ -630,7 +633,11 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
                   value={accountId}
                   onValueChange={(value) => {
                     setAccountId(value);
-                    window.setTimeout(() => (type === "transfer" ? toAccountRef.current : categoryRef.current)?.focus(), 0);
+                    window.setTimeout(() => {
+                      if (purpose === "partner_advance") projectRef.current?.focus();
+                      else if (type === "transfer") toAccountRef.current?.focus();
+                      else categoryRef.current?.focus();
+                    }, 0);
                   }}
                 >
                   <SelectTrigger ref={accountRef}><SelectValue placeholder="Select" /></SelectTrigger>
@@ -739,7 +746,11 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
           )}
 
           <div className="grid gap-2">
-            <Label>Project <span className="text-xs text-muted-foreground">(optional)</span></Label>
+            <Label>
+              Project <span className="text-xs text-muted-foreground">
+                {purpose !== "normal" || (type === "expense" && spentBy === "partner") ? "(required)" : "(optional)"}
+              </span>
+            </Label>
             <Select
               value={projectId || "__none"}
               onValueChange={(value) => {
