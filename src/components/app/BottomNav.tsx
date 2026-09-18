@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, ListChecks, PieChart, FolderKanban, Settings, Plus } from "lucide-react";
+import { Home, ListChecks, PieChart, FolderKanban, Settings, Plus, UsersRound } from "lucide-react";
 import { motion } from "framer-motion";
 
 const items = [
@@ -25,14 +25,14 @@ export function BottomNav({ onAdd }: { onAdd: () => void }) {
         <Plus className="h-7 w-7" strokeWidth={2.5} />
       </motion.button>
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/90 backdrop-blur-xl sm:mx-auto sm:mb-3 sm:max-w-2xl sm:rounded-2xl sm:border sm:shadow-[var(--shadow-soft)]">
-        <ul className="mx-auto grid max-w-2xl grid-cols-5">
+        <ul className="mx-auto grid max-w-2xl grid-cols-6">
           {items.map(({ to, label, icon: Icon }) => {
             const active = pathname === to || pathname.startsWith(to + "/");
             return (
               <li key={to} className="relative">
                 <Link
                   to={to}
-                  className="flex flex-col items-center gap-1 px-1 py-2.5 text-[11px] font-medium text-muted-foreground transition-colors data-[active=true]:text-primary"
+                  className="flex flex-col items-center gap-1 px-1 py-2.5 text-[10px] font-medium text-muted-foreground transition-colors data-[active=true]:text-primary"
                   data-active={active}
                 >
                   <Icon className="h-5 w-5" />
