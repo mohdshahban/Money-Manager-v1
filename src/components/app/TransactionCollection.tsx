@@ -105,7 +105,7 @@ function TransactionTable({ transactions, categories, accounts, projects = [], c
           </thead>
           <tbody className="divide-y divide-border/70">
             {transactions.map((tx) => {
-              const { cat, acc, project, categoryLabel } = txMeta(tx, categories, accounts, projects);
+              const { cat, acc, project, categoryLabel, spentByPartner, displayTags } = txMeta(tx, categories, accounts, projects);
               const { sign, color } = amountMeta(tx);
               return (
                 <tr key={tx.id} className="group transition-colors hover:bg-muted/40">
