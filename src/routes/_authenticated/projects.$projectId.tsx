@@ -148,6 +148,7 @@ function ProjectDetail() {
         <TabsList className="h-auto w-full justify-start overflow-x-auto rounded-2xl border bg-card p-1 sm:w-fit">
           <TabsTrigger value="overview" className="gap-1.5"><WalletCards className="h-4 w-4" /> Overview</TabsTrigger>
           <TabsTrigger value="transactions" className="gap-1.5"><FileText className="h-4 w-4" /> Transactions</TabsTrigger>
+          <TabsTrigger value="team" className="gap-1.5"><Users className="h-4 w-4" /> Team</TabsTrigger>
           <TabsTrigger value="analytics" className="gap-1.5"><BarChart3 className="h-4 w-4" /> Analytics</TabsTrigger>
           <TabsTrigger value="payments" className="gap-1.5"><WalletCards className="h-4 w-4" /> Payments</TabsTrigger>
           <TabsTrigger value="receipts" className="gap-1.5"><ReceiptText className="h-4 w-4" /> Files & receipts</TabsTrigger>
@@ -206,7 +207,11 @@ function ProjectDetail() {
           <TransactionCollection transactions={filteredTxs} {...txProps} emptyMessage="No project transactions match these filters." />
         </TabsContent>
 
-        <TabsContent value="team" className="mt-0">\n          <TeamProjectView projectId={projectId} />\n        </TabsContent>\n\n        <TabsContent value="analytics" className="mt-0 grid gap-4 xl:grid-cols-2">
+        <TabsContent value="team" className="mt-0">\n          <TeamProjectView projectId={projectId} />\n        </TabsContent>\n\n        <TabsContent value="team" className="mt-0">
+          <TeamProjectView projectId={projectId} />
+        </TabsContent>
+
+        <TabsContent value="analytics" className="mt-0 grid gap-4 xl:grid-cols-2">
           <BreakdownCard title="Spend by category">
             {stats.byCategory.size === 0 ? <Empty text="No expenses yet." /> : [...stats.byCategory.entries()].sort((a, b) => b[1] - a[1]).map(([catId, amount]) => {
               const cat = categories.find((c) => c.id === catId);
