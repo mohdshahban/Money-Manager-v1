@@ -16,10 +16,24 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useAccounts, useCategories, useProjects, useMutateEntity, useCreateCategory, type Transaction } from "@/hooks/useFinance";
+import { useAccounts, useCategories, useProjects, useMutateEntity, useCreateCategory, type Account, type Transaction } from "@/hooks/useFinance";
 import { useTransactions } from "@/hooks/useFinance";
 import { toast } from "sonner";
-import { PARTNER_DRAWINGS_ACCOUNT_TYPE } from "@/lib/partnerLedger";
+import {
+  PARTNER_ADVANCE_TAG,
+  PARTNER_DRAWING_TAG,
+  PARTNER_DRAWINGS_ACCOUNT_TYPE,
+  PARTNER_FLOAT_ACCOUNT_TYPE,
+  PARTNER_RETURN_TAG,
+  PARTNER_SPEND_TAG,
+  PARTNER_SYSTEM_TAGS,
+  hasPartnerTag,
+  isPartnerSystemAccountType,
+  withoutPartnerSystemTags,
+} from "@/lib/partnerLedger";
+
+type TransactionPurpose = "normal" | "partner_advance" | "partner_drawing" | "partner_return";
+type SpentBy = "me" | "partner";
 
 type Props = {
   open: boolean;
@@ -53,6 +67,8 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
   const createCategory = useCreateCategory();
 
   const [type, setType] = useState<"income" | "expense" | "transfer">("expense");
+  const [purpose, setPurpose] = useState<TransactionPurpose>("normal");
+  const [spentBy, setSpentBy] = useState<SpentBy>("me");
   const [amount, setAmount] = useState("");
   const [categoryId, setCategoryId] = useState<string>("");
   const [subCategoryId, setSubCategoryId] = useState<string>("");
@@ -75,6 +91,10 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
 
+  const normalAccounts = useMemo(() => accounts.filter((a) => !isPartnerSystemAccountType(a.type)), [accounts]);
+  const partnerFloatAccount = accounts.find((a) => a.type === PARTNER_FLOAT_ACCOUNT_TYPE) ?? null;
+  const partnerDrawingsAccount = accounts.find((a) => a.type === PARTNER_DRAWINGS_ACCOUNT_TYPE) ?? null;
+
   const cameraRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const amountRef = useRef<HTMLInputElement>(null);
@@ -91,7 +111,21 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
 
   useEffect(() => {
     if (editing) {
-      setType(editing.type);
+      const isAdvance = hasPartnerTag(editing.tags, PARTNER_ADVANCE_TAG) ||
+        (editing.type === "transfer" && !!partnerFloatAccount && editing.to_account_id === partnerFloatAccount.id);
+      const isDrawing = hasPartnerTag(editing.tags, PARTNER_DRAWING_TAG) ||
+        (editing.type === "transfer" && !!partnerFloatAccount && !!partnerDrawingsAccount && editing.account_id === partnerFloatAccount.id && editing.to_account_id === partnerDrawingsAccount.id);
+      const isReturn = hasPartnerTag(editing.tags, PARTNER_RETURN_TAG) ||
+        (editing.type === "transfer" && !!partnerFloatAccount && editing.account_id === partnerFloatAccount.id && editing.to_account_id !== partnerDrawingsAccount?.id);
+      const inferredPurpose: TransactionPurpose = isAdvance ? "partner_advance" : isDrawing ? "partner_drawing" : isReturn ? "partner_return" : "normal";
+      const isPartnerSpend = editing.type === "expense" && (
+        hasPartnerTag(editing.tags, PARTNER_SPEND_TAG) ||
+        (!!partnerFloatAccount && editing.account_id === partnerFloatAccount.id)
+      );
+
+      setPurpose(inferredPurpose);
+      setSpentBy(isPartnerSpend ? "partner" : "me");
+      setType(inferredPurpose === "normal" ? editing.type : "transfer");
       setAmount(String(editing.amount));
       const editCat = categories.find((c) => c.id === editing.category_id);
       if (editCat?.parent_id) {
@@ -101,12 +135,14 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
         setCategoryId(editing.category_id ?? "");
         setSubCategoryId("");
       }
-      setAccountId(editing.account_id ?? "");
-      setToAccountId(editing.to_account_id ?? "");
+      if (isPartnerSpend) setAccountId(normalAccounts[0]?.id ?? "");
+      else if (inferredPurpose === "partner_drawing" || inferredPurpose === "partner_return") setAccountId(normalAccounts[0]?.id ?? "");
+      else setAccountId(editing.account_id ?? normalAccounts[0]?.id ?? "");
+      setToAccountId(inferredPurpose === "partner_return" ? (editing.to_account_id ?? normalAccounts[0]?.id ?? "") : (editing.to_account_id ?? ""));
       setVendor(editing.vendor ?? "");
       setNotes(editing.notes ?? "");
       setProjectId(editing.project_id ?? "");
-      setTagsInput((editing.tags ?? []).join(", "));
+      setTagsInput(withoutPartnerSystemTags(editing.tags).join(", "));
       setOccurredAt(toLocalInputValue(new Date(editing.occurred_at)));
       setReceiptPath(editing.receipt_path ?? null);
       setDateChanged(true);
@@ -115,10 +151,12 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
       setShowMoreTags(false);
     } else if (open) {
       setType("expense");
+      setPurpose("normal");
+      setSpentBy("me");
       setAmount("");
       setCategoryId("");
       setSubCategoryId("");
-      setAccountId(accounts[0]?.id ?? "");
+      setAccountId(normalAccounts[0]?.id ?? "");
       setToAccountId("");
       setVendor("");
       setNotes("");
@@ -131,7 +169,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
       setNoteFocused(false);
       setShowMoreTags(false);
     }
-  }, [editing, open, accounts, categories]);
+  }, [editing, open, accounts, categories, normalAccounts, partnerFloatAccount, partnerDrawingsAccount]);
 
   useEffect(() => {
     if (!open) return;
@@ -225,6 +263,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
         const label = rawTag.trim();
         if (!label) continue;
         const key = label.toLowerCase();
+        if (PARTNER_SYSTEM_TAGS.has(key)) continue;
         const current = scores.get(key) ?? { label, score: 0, lastIndex: index, contextual: false };
         current.score += 1 + Math.max(0, 3 - index / 20);
         current.lastIndex = Math.min(current.lastIndex, index);
