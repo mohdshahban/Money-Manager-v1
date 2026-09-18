@@ -102,6 +102,7 @@ export function PartnerProjectView({ projectId }: Props) {
       .reduce((value, tx) => value + Number(tx.amount), 0);
 
     const directOwnerSpend = Math.max(0, allExpenses - spentByPartner);
+    const cashPaidByYou = directOwnerSpend + paidToPartner;
     const quoted = Number(project?.quoted_amount ?? 0);
     const realizedProfit = received - allExpenses;
     const projectedProfit = quoted - allExpenses;
@@ -121,6 +122,7 @@ export function PartnerProjectView({ projectId }: Props) {
       allExpenses,
       received,
       directOwnerSpend,
+      cashPaidByYou,
       quoted,
       realizedProfit,
       projectedProfit,
@@ -192,14 +194,15 @@ export function PartnerProjectView({ projectId }: Props) {
           </div>
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
             <SmallMetric label="Client received" value={formatCurrency(totals.received, currency)} />
-            <SmallMetric label="Total actual cost" value={formatCurrency(totals.allExpenses, currency)} />
-            <SmallMetric label="Paid directly by you" value={formatCurrency(totals.directOwnerSpend, currency)} />
+            <SmallMetric label="Total Project Expenses" value={formatCurrency(totals.allExpenses, currency)} />
+            <SmallMetric label="Cash Paid by You" value={formatCurrency(totals.cashPaidByYou, currency)} />
             <SmallMetric label="Spent by partner" value={formatCurrency(totals.spentByPartner, currency)} />
             <SmallMetric label="Realized profit so far" value={formatCurrency(totals.realizedProfit, currency)} valueClass={totals.realizedProfit >= 0 ? "text-[color:var(--success)]" : "text-destructive"} />
             <SmallMetric label="Projected final profit" value={formatCurrency(totals.projectedProfit, currency)} valueClass={totals.projectedProfit >= 0 ? "text-[color:var(--success)]" : "text-destructive"} />
           </div>
-          <div className="mt-4 rounded-xl bg-muted/45 p-3 text-xs text-muted-foreground">
-            Projected final profit = quoted amount ({formatCurrency(totals.quoted, currency)}) minus all actual project expenses.
+          <div className="mt-4 grid gap-1 rounded-xl bg-muted/45 p-3 text-xs text-muted-foreground">
+            <p>Projected final profit = quoted amount ({formatCurrency(totals.quoted, currency)}) minus Total Project Expenses.</p>
+            <p>Cash Paid by You = direct project expenses ({formatCurrency(totals.directOwnerSpend, currency)}) + money paid to partner ({formatCurrency(totals.paidToPartner, currency)}). Partner-paid labour/material is already included in Total Project Expenses.</p>
           </div>
         </section>
 
