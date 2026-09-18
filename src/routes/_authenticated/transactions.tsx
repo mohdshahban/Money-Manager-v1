@@ -13,6 +13,7 @@ import { TransactionCollection, type TransactionViewMode } from "@/components/ap
 import { exportCSV, exportExcel, exportPDF } from "@/lib/exports";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
+import { PARTNER_FLOAT_ACCOUNT_TYPE, PARTNER_SPEND_TAG, hasPartnerTag, withoutPartnerSystemTags } from "@/lib/partnerLedger";
 
 export const Route = createFileRoute("/_authenticated/transactions")({ component: TxPage });
 
@@ -31,6 +32,7 @@ function TxPage() {
   const [tagFilter, setTagFilter] = useState("all");
   const [projectFilter, setProjectFilter] = useState("all");
   const [payFilter, setPayFilter] = useState("all");
+  const [spentByFilter, setSpentByFilter] = useState("all");
   const [catFilter, setCatFilter] = useState("all");
   const [dateRange, setDateRange] = useState("all");
   const [customFrom, setCustomFrom] = useState("");
@@ -41,7 +43,7 @@ function TxPage() {
   const [open, setOpen] = useState(false);
   const [view, setView] = useState<TransactionViewMode>("list");
 
-  const allTags = useMemo(() => Array.from(new Set(txs.flatMap((t) => t.tags ?? []))).sort(), [txs]);
+  const allTags = useMemo(() => Array.from(new Set(txs.flatMap((t) => withoutPartnerSystemTags(t.tags)))).sort(), [txs]);
   const payModes = useMemo(() => Array.from(new Set(txs.map((t) => t.payment_method).filter(Boolean) as string[])).sort(), [txs]);
   const rootCats = useMemo(() => cats.filter((c) => !c.parent_id), [cats]);
 
@@ -66,6 +68,12 @@ function TxPage() {
         else if (t.project_id !== projectFilter) return false;
       }
       if (payFilter !== "all" && (t.payment_method ?? "") !== payFilter) return false;
+      if (spentByFilter !== "all") {
+        const account = accounts.find((a) => a.id === t.account_id);
+        const partnerSpent = t.type === "expense" && (account?.type === PARTNER_FLOAT_ACCOUNT_TYPE || hasPartnerTag(t.tags, PARTNER_SPEND_TAG));
+        if (spentByFilter === "partner" && !partnerSpent) return false;
+        if (spentByFilter === "me" && (t.type !== "expense" || partnerSpent)) return false;
+      }
       if (catFilter !== "all") {
         const c = cats.find((x) => x.id === t.category_id);
         const root = c?.parent_id ?? c?.id ?? null;
@@ -81,16 +89,16 @@ function TxPage() {
       const project = projects.find((p) => p.id === t.project_id)?.name ?? "";
       return [t.vendor, t.notes, cat, acc, project, String(t.amount), (t.tags ?? []).join(" ")].join(" ").toLowerCase().includes(query);
     });
-  }, [txs, q, typeFilter, tagFilter, projectFilter, payFilter, catFilter, dateBounds, minAmt, maxAmt, cats, accounts, projects]);
+  }, [txs, q, typeFilter, tagFilter, projectFilter, payFilter, spentByFilter, catFilter, dateBounds, minAmt, maxAmt, cats, accounts, projects]);
 
-  const activeCount = [typeFilter !== "all", tagFilter !== "all", projectFilter !== "all", payFilter !== "all", catFilter !== "all", dateRange !== "all", !!(minAmt || maxAmt), !!q].filter(Boolean).length;
+  const activeCount = [typeFilter !== "all", tagFilter !== "all", projectFilter !== "all", payFilter !== "all", spentByFilter !== "all", catFilter !== "all", dateRange !== "all", !!(minAmt || maxAmt), !!q].filter(Boolean).length;
   const fIncome = filtered.filter((t) => t.type === "income").reduce((s, t) => s + Number(t.amount), 0);
   const fExpense = filtered.filter((t) => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0);
   const net = fIncome - fExpense;
   const summaryLabel = activeCount > 0 ? "filtered" : "all-time";
 
   const clearAll = () => {
-    setQ(""); setTypeFilter("all"); setTagFilter("all"); setProjectFilter("all"); setPayFilter("all"); setCatFilter("all");
+    setQ(""); setTypeFilter("all"); setTagFilter("all"); setProjectFilter("all"); setPayFilter("all"); setSpentByFilter("all"); setCatFilter("all");
     setDateRange("all"); setCustomFrom(""); setCustomTo(""); setMinAmt(""); setMaxAmt("");
   };
 
@@ -145,9 +153,10 @@ function TxPage() {
           <Select value={dateRange} onValueChange={setDateRange}><SelectTrigger><SelectValue placeholder="All dates" /></SelectTrigger><SelectContent><SelectItem value="all">All dates</SelectItem><SelectItem value="today">Today</SelectItem><SelectItem value="week">This week</SelectItem><SelectItem value="month">This month</SelectItem><SelectItem value="custom">Custom range</SelectItem></SelectContent></Select>
         </div>
 
-        <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-[repeat(4,minmax(150px,1fr))_auto]">
+        <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-[repeat(5,minmax(140px,1fr))_auto]">
           <Select value={tagFilter} onValueChange={setTagFilter}><SelectTrigger><SelectValue placeholder="All tags" /></SelectTrigger><SelectContent><SelectItem value="all">All tags</SelectItem>{allTags.map((tag) => <SelectItem key={tag} value={tag}>#{tag}</SelectItem>)}</SelectContent></Select>
           <Select value={payFilter} onValueChange={setPayFilter}><SelectTrigger><SelectValue placeholder="All payment modes" /></SelectTrigger><SelectContent><SelectItem value="all">All payment modes</SelectItem>{payModes.map((mode) => <SelectItem key={mode} value={mode}>{mode}</SelectItem>)}</SelectContent></Select>
+          <Select value={spentByFilter} onValueChange={setSpentByFilter}><SelectTrigger><SelectValue placeholder="Spent by" /></SelectTrigger><SelectContent><SelectItem value="all">Spent by · Everyone</SelectItem><SelectItem value="me">Spent by · Me</SelectItem><SelectItem value="partner">Spent by · Partner</SelectItem></SelectContent></Select>
           <Input type="number" placeholder="Min amount" value={minAmt} onChange={(e) => setMinAmt(e.target.value)} />
           <Input type="number" placeholder="Max amount" value={maxAmt} onChange={(e) => setMaxAmt(e.target.value)} />
           {activeCount > 0 ? <Button variant="ghost" size="sm" className="gap-1.5 self-center" onClick={clearAll}><X className="h-4 w-4" /> Clear {activeCount}</Button> : <div />}

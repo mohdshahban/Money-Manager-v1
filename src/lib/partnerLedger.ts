@@ -13,3 +13,18 @@ export function isPartnerSystemAccountType(type: string) {
 export function isExcludedFromAvailableBalance(type: string) {
   return type === PARTNER_DRAWINGS_ACCOUNT_TYPE;
 }
+
+export const PARTNER_SYSTEM_TAGS = new Set([
+  PARTNER_ADVANCE_TAG,
+  PARTNER_SPEND_TAG,
+  PARTNER_DRAWING_TAG,
+  PARTNER_RETURN_TAG,
+]);
+
+export function hasPartnerTag(tags: string[] | null | undefined, tag: string) {
+  return (tags ?? []).some((item) => item.toLowerCase() === tag.toLowerCase());
+}
+
+export function withoutPartnerSystemTags(tags: string[] | null | undefined) {
+  return (tags ?? []).filter((item) => !PARTNER_SYSTEM_TAGS.has(item.toLowerCase()));
+}
