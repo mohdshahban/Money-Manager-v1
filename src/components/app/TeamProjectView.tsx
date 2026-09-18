@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, HardHat, LayoutList, Search, Table2, UsersRound, WalletCards } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { CalendarDays, Hammer, LayoutList, Search, Table2, Users, WalletCards } from "lucide-react";
 import { endOfDay, endOfMonth, endOfYear, format, startOfDay, startOfMonth, startOfYear } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -201,7 +201,7 @@ export function TeamProjectView({ projectId: fixedProjectId, allowProjectSwitch 
   if (!project) {
     return (
       <div className="rounded-2xl border border-dashed bg-card px-6 py-14 text-center">
-        <UsersRound className="mx-auto h-9 w-9 text-muted-foreground" />
+        <Users className="mx-auto h-9 w-9 text-muted-foreground" />
         <p className="mt-3 font-medium">Choose a project to view its team ledger</p>
         <p className="mt-1 text-sm text-muted-foreground">Team totals are calculated only from transactions assigned to that project.</p>
       </div>
@@ -263,8 +263,8 @@ export function TeamProjectView({ projectId: fixedProjectId, allowProjectSwitch 
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard label="Total labour paid" value={formatCurrency(totalPaid, currency)} icon={<WalletCards className="h-4 w-4" />} />
-        <MetricCard label="People / teams" value={String(periodRows.length)} icon={<UsersRound className="h-4 w-4" />} />
-        <MetricCard label="Trades" value={String(tradeTotals.length)} icon={<HardHat className="h-4 w-4" />} />
+        <MetricCard label="People / teams" value={String(periodRows.length)} icon={<Users className="h-4 w-4" />} />
+        <MetricCard label="Trades" value={String(tradeTotals.length)} icon={<Hammer className="h-4 w-4" />} />
         <MetricCard label="Payments" value={String(paymentCount)} icon={<CalendarDays className="h-4 w-4" />} />
       </div>
 
@@ -381,7 +381,7 @@ export function TeamProjectView({ projectId: fixedProjectId, allowProjectSwitch 
   );
 }
 
-function MetricCard({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
+function MetricCard({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
   return <div className="rounded-2xl border bg-card p-4 shadow-[var(--shadow-soft)]"><div className="flex items-center gap-2 text-muted-foreground">{icon}<p className="text-xs uppercase tracking-wide">{label}</p></div><p className="mt-2 text-xl font-semibold tabular-nums">{value}</p></div>;
 }
 
