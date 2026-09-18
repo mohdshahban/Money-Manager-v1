@@ -10,6 +10,7 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, AreaChart, Area, XAx
 import { eachDayOfInterval, endOfDay, endOfMonth, format, startOfDay, startOfMonth, subMonths } from "date-fns";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { isExcludedFromAvailableBalance } from "@/lib/partnerLedger";
 
 export const Route = createFileRoute("/_authenticated/dashboard")({ component: Dashboard });
 
@@ -41,20 +42,22 @@ function Dashboard() {
     return { start: startOfMonth(now), end: endOfMonth(now), label: format(now, "MMMM yyyy") };
   }, [range, customFrom, customTo]);
 
+  const balanceAccounts = useMemo(() => accounts.filter((a) => !isExcludedFromAvailableBalance(a.type)), [accounts]);
+
   const balances = useMemo(() => {
     const accBal = new Map<string, number>();
-    accounts.forEach((a) => accBal.set(a.id, Number(a.opening_balance)));
+    balanceAccounts.forEach((a) => accBal.set(a.id, Number(a.opening_balance)));
     txs.forEach((t) => {
       const amount = Number(t.amount);
       if (t.type === "income" && t.account_id) accBal.set(t.account_id, (accBal.get(t.account_id) ?? 0) + amount);
       else if (t.type === "expense" && t.account_id) accBal.set(t.account_id, (accBal.get(t.account_id) ?? 0) - amount);
       else if (t.type === "transfer") {
         if (t.account_id) accBal.set(t.account_id, (accBal.get(t.account_id) ?? 0) - amount);
-        if (t.to_account_id) accBal.set(t.to_account_id, (accBal.get(t.to_account_id) ?? 0) + amount);
+        if (t.to_account_id && accBal.has(t.to_account_id)) accBal.set(t.to_account_id, (accBal.get(t.to_account_id) ?? 0) + amount);
       }
     });
     return Array.from(accBal.values()).reduce((sum, value) => sum + value, 0);
-  }, [accounts, txs]);
+  }, [balanceAccounts, txs]);
 
   const periodTxs = useMemo(() => txs.filter((t) => { const date = new Date(t.occurred_at); return date >= rangeBounds.start && date <= rangeBounds.end; }), [txs, rangeBounds]);
   const periodIncome = periodTxs.filter((t) => t.type === "income").reduce((sum, t) => sum + Number(t.amount), 0);
@@ -128,7 +131,7 @@ function Dashboard() {
         </motion.div>
         <div className="grid grid-cols-2 gap-3">
           <StatCard icon={<PiggyBank className="h-4 w-4" />} label="Net savings" value={formatCurrency(savings, currency)} gradient="var(--gradient-success)" />
-          <StatCard icon={<Wallet className="h-4 w-4" />} label="Accounts" value={String(accounts.length)} gradient="var(--gradient-secondary)" to="/accounts" />
+          <StatCard icon={<Wallet className="h-4 w-4" />} label="Accounts" value={String(balanceAccounts.length)} gradient="var(--gradient-secondary)" to="/accounts" />
           <StatCard icon={<TrendingUp className="h-4 w-4" />} label="Cash flow" value={formatCurrency(savings, currency)} gradient="var(--gradient-warning)" />
           <StatCard icon={<Sparkles className="h-4 w-4" />} label="Savings health" value={`${health}/100`} gradient="var(--gradient-primary)" />
         </div>
