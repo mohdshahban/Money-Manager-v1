@@ -1,11 +1,12 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { FolderKanban, Home, ListChecks, PieChart, Plus, Settings, WalletCards } from "lucide-react";
+import { FolderKanban, Home, ListChecks, PieChart, Plus, Settings, Users, WalletCards } from "lucide-react";
 import { useProfile } from "@/hooks/useProfile";
 
 const primaryItems = [
   { to: "/dashboard", label: "Overview", icon: Home },
   { to: "/transactions", label: "Transactions", icon: ListChecks },
   { to: "/projects", label: "Projects", icon: FolderKanban },
+  { to: "/team", label: "Team", icon: Users },
   { to: "/reports", label: "Reports", icon: PieChart },
 ] as const;
 

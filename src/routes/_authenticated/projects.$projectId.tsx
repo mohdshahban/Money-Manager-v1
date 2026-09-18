@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { ArrowLeft, BarChart3, Edit3, FileText, LayoutList, Pencil, ReceiptText, Search, Star, Table2, Trash2, WalletCards, X } from "lucide-react";
+import { ArrowLeft, BarChart3, Edit3, FileText, LayoutList, Pencil, ReceiptText, Search, Star, Table2, Trash2, Users, WalletCards, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,6 +14,7 @@ import { formatCurrency } from "@/lib/format";
 import { TransactionDialog } from "@/components/app/TransactionDialog";
 import { TransactionCollection, type TransactionViewMode } from "@/components/app/TransactionCollection";
 import { ReceiptIndicator } from "@/components/app/ReceiptIndicator";
+import { TeamProjectView } from "@/components/app/TeamProjectView";
 import { toast } from "sonner";
 import { endOfDay, endOfMonth, endOfWeek, format, startOfDay, startOfMonth, startOfWeek } from "date-fns";
 
@@ -148,6 +149,7 @@ function ProjectDetail() {
         <TabsList className="h-auto w-full justify-start overflow-x-auto rounded-2xl border bg-card p-1 sm:w-fit">
           <TabsTrigger value="overview" className="gap-1.5"><WalletCards className="h-4 w-4" /> Overview</TabsTrigger>
           <TabsTrigger value="transactions" className="gap-1.5"><FileText className="h-4 w-4" /> Transactions</TabsTrigger>
+          <TabsTrigger value="team" className="gap-1.5"><Users className="h-4 w-4" /> Team</TabsTrigger>
           <TabsTrigger value="analytics" className="gap-1.5"><BarChart3 className="h-4 w-4" /> Analytics</TabsTrigger>
           <TabsTrigger value="payments" className="gap-1.5"><WalletCards className="h-4 w-4" /> Payments</TabsTrigger>
           <TabsTrigger value="receipts" className="gap-1.5"><ReceiptText className="h-4 w-4" /> Files & receipts</TabsTrigger>
@@ -204,6 +206,10 @@ function ProjectDetail() {
           </div>
           <div className="flex items-center justify-between"><p className="text-xs text-muted-foreground">{filteredTxs.length} of {projectTxs.length} project transactions</p><div className="flex rounded-xl border bg-card p-1"><Button size="sm" variant={view === "list" ? "secondary" : "ghost"} className="h-8 gap-1.5" onClick={() => setView("list")}><LayoutList className="h-4 w-4" /> List</Button><Button size="sm" variant={view === "table" ? "secondary" : "ghost"} className="h-8 gap-1.5" onClick={() => setView("table")}><Table2 className="h-4 w-4" /> Table</Button></div></div>
           <TransactionCollection transactions={filteredTxs} {...txProps} emptyMessage="No project transactions match these filters." />
+        </TabsContent>
+
+        <TabsContent value="team" className="mt-0">
+          <TeamProjectView projectId={projectId} />
         </TabsContent>
 
         <TabsContent value="analytics" className="mt-0 grid gap-4 xl:grid-cols-2">
