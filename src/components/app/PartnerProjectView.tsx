@@ -1,49 +1,30 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ArrowUpRight, HandCoins, Pencil, RotateCcw, ShoppingCart, WalletCards } from "lucide-react";
+import { ArrowUpRight, HandCoins, Pencil, ShoppingCart, WalletCards } from "lucide-react";
 import { format } from "date-fns";
-import { supabase } from "@/integrations/supabase/client";
-import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { TransactionDialog } from "@/components/app/TransactionDialog";
 import {
   useAccounts,
   useCategories,
-  useMutateEntity,
   useProjects,
   useTransactions,
-  type Account,
   type Category,
   type Transaction,
 } from "@/hooks/useFinance";
 import { useProfile } from "@/hooks/useProfile";
-import { useAuth } from "@/hooks/useAuth";
 import { formatCurrency } from "@/lib/format";
 import {
-  PARTNER_ADVANCE_TAG,
-  PARTNER_DRAWING_TAG,
   PARTNER_DRAWINGS_ACCOUNT_TYPE,
   PARTNER_FLOAT_ACCOUNT_TYPE,
-  PARTNER_RETURN_TAG,
-  PARTNER_SPEND_TAG,
-  isPartnerSystemAccountType,
 } from "@/lib/partnerLedger";
-import { toast } from "sonner";
 
-type ActionMode = "advance" | "expense" | "drawing" | "return";
+type LedgerKind = "advance" | "expense" | "drawing" | "return";
 
 type Props = {
   projectId: string;
 };
-
-function toLocalInputValue(date: Date) {
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
-}
 
 function rootCategory(category: Category | undefined, categories: Category[]) {
   if (!category?.parent_id) return category;
@@ -51,25 +32,19 @@ function rootCategory(category: Category | undefined, categories: Category[]) {
 }
 
 export function PartnerProjectView({ projectId }: Props) {
-  const { user } = useAuth();
-  const qc = useQueryClient();
   const { data: profile } = useProfile();
   const currency = profile?.currency ?? "USD";
   const { data: projects = [] } = useProjects();
   const { data: accounts = [] } = useAccounts();
   const { data: categories = [] } = useCategories();
   const { data: allTx = [] } = useTransactions();
-  const { create: createTx } = useMutateEntity<Transaction>("transactions", ["transactions", "accounts"]);
 
   const project = projects.find((item) => item.id === projectId);
   const floatAccount = accounts.find((item) => item.type === PARTNER_FLOAT_ACCOUNT_TYPE) ?? null;
   const drawingsAccount = accounts.find((item) => item.type === PARTNER_DRAWINGS_ACCOUNT_TYPE) ?? null;
-  const normalAccounts = accounts.filter((item) => !isPartnerSystemAccountType(item.type));
 
-  const [actionMode, setActionMode] = useState<ActionMode | null>(null);
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [editOpen, setEditOpen] = useState(false);
-  const [settingUp, setSettingUp] = useState(false);
   const [partnerShare, setPartnerShare] = useState(50);
 
   useEffect(() => {
@@ -82,58 +57,6 @@ export function PartnerProjectView({ projectId }: Props) {
     const next = Math.min(100, Math.max(0, value || 0));
     setPartnerShare(next);
     if (typeof window !== "undefined") window.localStorage.setItem(`money-manager:partner-share:${projectId}`, String(next));
-  };
-
-  const ensurePartnerAccounts = async () => {
-    if (!user) throw new Error("You must be signed in");
-    let nextFloat = floatAccount;
-    let nextDrawings = drawingsAccount;
-
-    if (nextFloat && nextDrawings) return { float: nextFloat, drawings: nextDrawings };
-
-    setSettingUp(true);
-    try {
-      const rows: Array<Record<string, unknown>> = [];
-      if (!nextFloat) {
-        rows.push({
-          user_id: user.id,
-          name: "Partner Float",
-          type: PARTNER_FLOAT_ACCOUNT_TYPE,
-          icon: "wallet-cards",
-          color: "#0EA5E9",
-          opening_balance: 0,
-          currency,
-          archived: false,
-        });
-      }
-      if (!nextDrawings) {
-        rows.push({
-          user_id: user.id,
-          name: "Partner Drawings",
-          type: PARTNER_DRAWINGS_ACCOUNT_TYPE,
-          icon: "hand-coins",
-          color: "#F59E0B",
-          opening_balance: 0,
-          currency,
-          archived: false,
-        });
-      }
-
-      if (rows.length > 0) {
-        const { data, error } = await supabase.from("accounts").insert(rows as never).select("*");
-        if (error) throw error;
-        for (const account of (data ?? []) as unknown as Account[]) {
-          if (account.type === PARTNER_FLOAT_ACCOUNT_TYPE) nextFloat = account;
-          if (account.type === PARTNER_DRAWINGS_ACCOUNT_TYPE) nextDrawings = account;
-        }
-        await qc.invalidateQueries({ queryKey: ["accounts"] });
-      }
-
-      if (!nextFloat || !nextDrawings) throw new Error("Could not initialize partner tracking accounts");
-      return { float: nextFloat, drawings: nextDrawings };
-    } finally {
-      setSettingUp(false);
-    }
   };
 
   const projectTxs = useMemo(() => allTx.filter((tx) => tx.project_id === projectId), [allTx, projectId]);
@@ -204,7 +127,7 @@ export function PartnerProjectView({ projectId }: Props) {
         (tx.type === "transfer" && (tx.account_id === floatAccount.id || tx.to_account_id === floatAccount.id)),
       )
       .map((tx) => {
-        let kind: ActionMode = "expense";
+        let kind: LedgerKind = "expense";
         if (tx.type === "transfer" && tx.to_account_id === floatAccount.id) kind = "advance";
         else if (tx.type === "transfer" && tx.account_id === floatAccount.id && tx.to_account_id === drawingsAccount.id) kind = "drawing";
         else if (tx.type === "transfer" && tx.account_id === floatAccount.id) kind = "return";
@@ -218,15 +141,6 @@ export function PartnerProjectView({ projectId }: Props) {
   const balanceLabel = totals.balance >= 0 ? "Partner holds" : "You owe partner";
   const balanceTone = totals.balance >= 0 ? "text-amber-600" : "text-destructive";
 
-  const openAction = async (mode: ActionMode) => {
-    try {
-      await ensurePartnerAccounts();
-      setActionMode(mode);
-    } catch (error) {
-      toast.error((error as Error).message);
-    }
-  };
-
   return (
     <div className="grid gap-5">
       <div className="rounded-2xl border bg-card p-5 shadow-[var(--shadow-soft)]">
@@ -236,11 +150,8 @@ export function PartnerProjectView({ projectId }: Props) {
             <h3 className="mt-1 text-xl font-semibold">Project money held and spent by your execution partner</h3>
             <p className="mt-1 max-w-3xl text-sm text-muted-foreground">Money you give the partner is tracked as a transfer, not an expense. Only actual material/labour/project purchases reduce project profit.</p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button size="sm" className="gap-1.5" onClick={() => void openAction("advance")} disabled={settingUp}><ArrowUpRight className="h-4 w-4" /> Give to partner</Button>
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => void openAction("expense")} disabled={settingUp}><ShoppingCart className="h-4 w-4" /> Partner expense</Button>
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => void openAction("drawing")} disabled={settingUp}><HandCoins className="h-4 w-4" /> Partner drawing</Button>
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => void openAction("return")} disabled={settingUp}><RotateCcw className="h-4 w-4" /> Money returned</Button>
+          <div className="max-w-md rounded-xl border bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
+            Add or edit everything from the normal transaction dialog. Use <span className="font-medium text-foreground">Purpose</span> for partner advances/drawings/returns and <span className="font-medium text-foreground">Spent by → Partner</span> for actual project expenses.
           </div>
         </div>
       </div>
@@ -359,27 +270,6 @@ export function PartnerProjectView({ projectId }: Props) {
         </section>
       </div>
 
-      <PartnerActionDialog
-        open={!!actionMode}
-        mode={actionMode}
-        onOpenChange={(open) => !open && setActionMode(null)}
-        normalAccounts={normalAccounts}
-        categories={categories}
-        projectId={projectId}
-        currency={currency}
-        ensureAccounts={ensurePartnerAccounts}
-        submitting={createTx.isPending || settingUp}
-        onCreate={async (payload) => {
-          try {
-            await createTx.mutateAsync(payload);
-            toast.success(actionSuccess(actionMode));
-            setActionMode(null);
-          } catch (error) {
-            toast.error((error as Error).message);
-          }
-        }}
-      />
-
       <TransactionDialog
         open={editOpen}
         onOpenChange={(open) => {
@@ -390,14 +280,6 @@ export function PartnerProjectView({ projectId }: Props) {
       />
     </div>
   );
-}
-
-function actionSuccess(mode: ActionMode | null) {
-  if (mode === "advance") return "Money given to partner recorded";
-  if (mode === "expense") return "Partner expense recorded";
-  if (mode === "drawing") return "Partner drawing recorded";
-  if (mode === "return") return "Returned money recorded";
-  return "Partner ledger updated";
 }
 
 function Metric({ label, value, icon, valueClass = "" }: { label: string; value: string; icon: ReactNode; valueClass?: string }) {
@@ -412,7 +294,7 @@ function SettlementRow({ label, value, strong = false, valueClass = "" }: { labe
   return <div className={`flex items-center justify-between gap-3 text-sm ${strong ? "font-semibold" : ""}`}><span className="text-muted-foreground">{label}</span><span className={`tabular-nums ${valueClass}`}>{value}</span></div>;
 }
 
-function LedgerBadge({ kind }: { kind: ActionMode }) {
+function LedgerBadge({ kind }: { kind: LedgerKind }) {
   const meta = {
     advance: { label: "Given", className: "bg-emerald-500/10 text-emerald-600" },
     expense: { label: "Expense", className: "bg-primary/10 text-primary" },
@@ -422,198 +304,3 @@ function LedgerBadge({ kind }: { kind: ActionMode }) {
   return <span className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide ${meta.className}`}>{meta.label}</span>;
 }
 
-function PartnerActionDialog({
-  open,
-  mode,
-  onOpenChange,
-  normalAccounts,
-  categories,
-  projectId,
-  currency,
-  ensureAccounts,
-  submitting,
-  onCreate,
-}: {
-  open: boolean;
-  mode: ActionMode | null;
-  onOpenChange: (open: boolean) => void;
-  normalAccounts: Account[];
-  categories: Category[];
-  projectId: string;
-  currency: string;
-  ensureAccounts: () => Promise<{ float: Account; drawings: Account }>;
-  submitting: boolean;
-  onCreate: (payload: Partial<Transaction>) => Promise<void>;
-}) {
-  const [amount, setAmount] = useState("");
-  const [accountId, setAccountId] = useState("");
-  const [categoryId, setCategoryId] = useState("");
-  const [subCategoryId, setSubCategoryId] = useState("");
-  const [vendor, setVendor] = useState("");
-  const [notes, setNotes] = useState("");
-  const [occurredAt, setOccurredAt] = useState(() => toLocalInputValue(new Date()));
-
-  useEffect(() => {
-    if (!open) return;
-    setAmount("");
-    setAccountId(normalAccounts[0]?.id ?? "");
-    setCategoryId("");
-    setSubCategoryId("");
-    setVendor("");
-    setNotes("");
-    setOccurredAt(toLocalInputValue(new Date()));
-  }, [open, mode, normalAccounts]);
-
-  if (!mode) return null;
-
-  const parentCategories = categories.filter((item) => item.type === "expense" && !item.parent_id);
-  const subCategories = categories.filter((item) => item.parent_id === categoryId);
-  const title = mode === "advance" ? "Give money to partner" : mode === "expense" ? "Record partner expense" : mode === "drawing" ? "Record partner drawing" : "Record money returned";
-  const accountLabel = mode === "advance" ? "From account" : mode === "return" ? "Return to account" : null;
-
-  const submit = async () => {
-    const value = Number(amount);
-    if (!value || value <= 0) return toast.error("Enter a valid amount");
-    if ((mode === "advance" || mode === "return") && !accountId) return toast.error("Select an account");
-    if (mode === "expense" && !categoryId) return toast.error("Select an expense category");
-
-    const system = await ensureAccounts();
-    const occurred_at = new Date(occurredAt).toISOString();
-
-    if (mode === "advance") {
-      await onCreate({
-        type: "transfer",
-        amount: value,
-        account_id: accountId,
-        to_account_id: system.float.id,
-        category_id: null,
-        project_id: projectId,
-        notes: notes || "Money given to execution partner",
-        vendor: "Execution Partner",
-        tags: [PARTNER_ADVANCE_TAG],
-        occurred_at,
-        status: "paid",
-      });
-      return;
-    }
-
-    if (mode === "expense") {
-      await onCreate({
-        type: "expense",
-        amount: value,
-        account_id: system.float.id,
-        to_account_id: null,
-        category_id: subCategoryId || categoryId,
-        project_id: projectId,
-        notes: notes || null,
-        vendor: vendor || null,
-        payment_method: "Partner Float",
-        tags: [PARTNER_SPEND_TAG],
-        occurred_at,
-        status: "paid",
-      });
-      return;
-    }
-
-    if (mode === "drawing") {
-      await onCreate({
-        type: "transfer",
-        amount: value,
-        account_id: system.float.id,
-        to_account_id: system.drawings.id,
-        category_id: null,
-        project_id: projectId,
-        notes: notes || "Partner profit advance / drawing",
-        vendor: "Execution Partner",
-        tags: [PARTNER_DRAWING_TAG],
-        occurred_at,
-        status: "paid",
-      });
-      return;
-    }
-
-    await onCreate({
-      type: "transfer",
-      amount: value,
-      account_id: system.float.id,
-      to_account_id: accountId,
-      category_id: null,
-      project_id: projectId,
-      notes: notes || "Money returned by execution partner",
-      vendor: "Execution Partner",
-      tags: [PARTNER_RETURN_TAG],
-      occurred_at,
-      status: "paid",
-    });
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader><DialogTitle>{title}</DialogTitle></DialogHeader>
-        <div className="grid gap-4">
-          <div className="grid gap-2">
-            <Label>Amount ({currency})</Label>
-            <Input autoFocus type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" className="h-11 text-lg font-semibold" />
-          </div>
-
-          {accountLabel && (
-            <div className="grid gap-2">
-              <Label>{accountLabel}</Label>
-              <Select value={accountId} onValueChange={setAccountId}>
-                <SelectTrigger><SelectValue placeholder="Select account" /></SelectTrigger>
-                <SelectContent>{normalAccounts.map((account) => <SelectItem key={account.id} value={account.id}>{account.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-          )}
-
-          {mode === "expense" && (
-            <>
-              <div className="grid gap-2">
-                <Label>Expense category</Label>
-                <Select value={categoryId} onValueChange={(value) => { setCategoryId(value); setSubCategoryId(""); }}>
-                  <SelectTrigger><SelectValue placeholder="Material, Labour, Transport…" /></SelectTrigger>
-                  <SelectContent>{parentCategories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              {subCategories.length > 0 && (
-                <div className="grid gap-2">
-                  <Label>Subcategory</Label>
-                  <Select value={subCategoryId || "__none"} onValueChange={(value) => setSubCategoryId(value === "__none" ? "" : value)}>
-                    <SelectTrigger><SelectValue placeholder="Optional" /></SelectTrigger>
-                    <SelectContent><SelectItem value="__none">No subcategory</SelectItem>{subCategories.map((category) => <SelectItem key={category.id} value={category.id}>{category.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                </div>
-              )}
-              <div className="grid gap-2">
-                <Label>Vendor / Payee</Label>
-                <Input value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="Shop, carpenter, painter…" />
-              </div>
-            </>
-          )}
-
-          <div className="grid gap-2">
-            <Label>Date & time</Label>
-            <Input type="datetime-local" value={occurredAt} onChange={(e) => setOccurredAt(e.target.value)} />
-          </div>
-          <div className="grid gap-2">
-            <Label>Note</Label>
-            <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional note" />
-          </div>
-
-          <div className="rounded-xl border bg-muted/35 p-3 text-xs text-muted-foreground">
-            {mode === "advance" && "This is recorded as a transfer to Partner Float, so it does not reduce project profit."}
-            {mode === "expense" && "This is a real project expense paid by your partner. It reduces Partner Float and counts in project cost."}
-            {mode === "drawing" && "This reduces Partner Float but is not treated as a project cost. It is deducted from the partner's final profit settlement."}
-            {mode === "return" && "This transfers unused Partner Float back to your selected account without changing project profit."}
-          </div>
-
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button onClick={() => void submit()} disabled={submitting}>{submitting ? "Saving…" : "Save"}</Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
