@@ -1,6 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { ArrowLeft, BarChart3, Edit3, FileText, LayoutList, Pencil, ReceiptText, Search, Star, Table2, Trash2, Users, WalletCards, X } from "lucide-react";
+import { ArrowLeft, BarChart3, Edit3, FileText, HandCoins, LayoutList, Pencil, ReceiptText, Search, Star, Table2, Trash2, Users, WalletCards, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -15,6 +15,7 @@ import { TransactionDialog } from "@/components/app/TransactionDialog";
 import { TransactionCollection, type TransactionViewMode } from "@/components/app/TransactionCollection";
 import { ReceiptIndicator } from "@/components/app/ReceiptIndicator";
 import { TeamProjectView } from "@/components/app/TeamProjectView";
+import { PartnerProjectView } from "@/components/app/PartnerProjectView";
 import { toast } from "sonner";
 import { endOfDay, endOfMonth, endOfWeek, format, startOfDay, startOfMonth, startOfWeek } from "date-fns";
 
@@ -150,6 +151,7 @@ function ProjectDetail() {
           <TabsTrigger value="overview" className="gap-1.5"><WalletCards className="h-4 w-4" /> Overview</TabsTrigger>
           <TabsTrigger value="transactions" className="gap-1.5"><FileText className="h-4 w-4" /> Transactions</TabsTrigger>
           <TabsTrigger value="team" className="gap-1.5"><Users className="h-4 w-4" /> Team</TabsTrigger>
+          <TabsTrigger value="partner" className="gap-1.5"><HandCoins className="h-4 w-4" /> Partner</TabsTrigger>
           <TabsTrigger value="analytics" className="gap-1.5"><BarChart3 className="h-4 w-4" /> Analytics</TabsTrigger>
           <TabsTrigger value="payments" className="gap-1.5"><WalletCards className="h-4 w-4" /> Payments</TabsTrigger>
           <TabsTrigger value="receipts" className="gap-1.5"><ReceiptText className="h-4 w-4" /> Files & receipts</TabsTrigger>
@@ -210,6 +212,10 @@ function ProjectDetail() {
 
         <TabsContent value="team" className="mt-0">
           <TeamProjectView projectId={projectId} />
+        </TabsContent>
+
+        <TabsContent value="partner" className="mt-0">
+          <PartnerProjectView projectId={projectId} />
         </TabsContent>
 
         <TabsContent value="analytics" className="mt-0 grid gap-4 xl:grid-cols-2">
