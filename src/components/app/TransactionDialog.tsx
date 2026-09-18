@@ -524,13 +524,50 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
               <button
                 key={t}
                 type="button"
-                onClick={() => setType(t)}
+                onClick={() => { setPurpose("normal"); setType(t); }}
                 className="rounded-xl border px-3 py-2 text-sm font-medium capitalize transition-all data-[active=true]:border-primary data-[active=true]:bg-primary data-[active=true]:text-primary-foreground"
                 data-active={type === t}
               >
                 {t}
               </button>
             ))}
+          </div>
+
+          <div className="grid gap-2">
+            <Label>Purpose</Label>
+            <Select
+              value={purpose}
+              onValueChange={(value) => {
+                const next = value as TransactionPurpose;
+                setPurpose(next);
+                if (next === "normal") {
+                  if (purpose !== "normal") {
+                    setType("expense");
+                    setAccountId(normalAccounts[0]?.id ?? "");
+                    setToAccountId("");
+                  }
+                } else {
+                  setType("transfer");
+                  setCategoryId("");
+                  setSubCategoryId("");
+                  if (next === "partner_return") setToAccountId(normalAccounts[0]?.id ?? "");
+                }
+              }}
+            >
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="normal">Normal transaction</SelectItem>
+                <SelectItem value="partner_advance">Money given to partner</SelectItem>
+                <SelectItem value="partner_drawing">Partner drawing / profit advance</SelectItem>
+                <SelectItem value="partner_return">Money returned by partner</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-[11px] text-muted-foreground">
+              {purpose === "normal" && "Use this for normal income, expense or account transfer."}
+              {purpose === "partner_advance" && "Money handed to your partner is a transfer, not a project expense."}
+              {purpose === "partner_drawing" && "Money the partner keeps for himself reduces final settlement, not project profit."}
+              {purpose === "partner_return" && "Unused partner money comes back without changing project profit."}
+            </p>
           </div>
 
           <div className="grid gap-2">
@@ -552,21 +589,81 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
             />
           </div>
 
+          {purpose === "normal" && type === "expense" && (
+            <div className="grid gap-2">
+              <Label>Spent by</Label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSpentBy("me")}
+                  className="rounded-xl border px-3 py-2 text-sm font-medium transition-all data-[active=true]:border-primary data-[active=true]:bg-primary data-[active=true]:text-primary-foreground"
+                  data-active={spentBy === "me"}
+                >
+                  Me
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSpentBy("partner")}
+                  className="rounded-xl border px-3 py-2 text-sm font-medium transition-all data-[active=true]:border-primary data-[active=true]:bg-primary data-[active=true]:text-primary-foreground"
+                  data-active={spentBy === "partner"}
+                >
+                  Partner
+                </button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                {spentBy === "me"
+                  ? "This expense is paid directly from your selected account."
+                  : "This same transaction will count as partner spend and reduce Partner Float automatically."}
+              </p>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-2">
-              <Label>Account</Label>
-              <Select
-                value={accountId}
-                onValueChange={(value) => {
-                  setAccountId(value);
-                  window.setTimeout(() => (type === "transfer" ? toAccountRef.current : categoryRef.current)?.focus(), 0);
-                }}
-              >
-                <SelectTrigger ref={accountRef}><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>{accounts.filter((a) => a.type !== PARTNER_DRAWINGS_ACCOUNT_TYPE || a.id === accountId).map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
-              </Select>
+              <Label>
+                {purpose === "partner_advance" ? "From account" : purpose === "partner_return" || purpose === "partner_drawing" || (purpose === "normal" && type === "expense" && spentBy === "partner") ? "Payment source" : "Account"}
+              </Label>
+              {purpose === "partner_return" || purpose === "partner_drawing" || (purpose === "normal" && type === "expense" && spentBy === "partner") ? (
+                <div className="flex h-9 items-center rounded-md border bg-muted/45 px-3 text-sm font-medium">Partner Float</div>
+              ) : (
+                <Select
+                  value={accountId}
+                  onValueChange={(value) => {
+                    setAccountId(value);
+                    window.setTimeout(() => (type === "transfer" ? toAccountRef.current : categoryRef.current)?.focus(), 0);
+                  }}
+                >
+                  <SelectTrigger ref={accountRef}><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>{normalAccounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
+                </Select>
+              )}
             </div>
-            {type === "transfer" ? (
+
+            {purpose === "partner_advance" ? (
+              <div className="grid gap-2">
+                <Label>Destination</Label>
+                <div className="flex h-9 items-center rounded-md border bg-muted/45 px-3 text-sm font-medium">Partner Float</div>
+              </div>
+            ) : purpose === "partner_drawing" ? (
+              <div className="grid gap-2">
+                <Label>Destination</Label>
+                <div className="flex h-9 items-center rounded-md border bg-muted/45 px-3 text-sm font-medium">Partner Drawings</div>
+              </div>
+            ) : purpose === "partner_return" ? (
+              <div className="grid gap-2">
+                <Label>Return to account</Label>
+                <Select
+                  value={toAccountId}
+                  onValueChange={(value) => {
+                    setToAccountId(value);
+                    window.setTimeout(() => projectRef.current?.focus(), 0);
+                  }}
+                >
+                  <SelectTrigger ref={toAccountRef}><SelectValue placeholder="Select" /></SelectTrigger>
+                  <SelectContent>{normalAccounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            ) : type === "transfer" ? (
               <div className="grid gap-2">
                 <Label>To account</Label>
                 <Select
@@ -577,7 +674,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
                   }}
                 >
                   <SelectTrigger ref={toAccountRef}><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>{accounts.filter((a) => a.id !== accountId && (a.type !== PARTNER_DRAWINGS_ACCOUNT_TYPE || a.id === toAccountId)).map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
+                  <SelectContent>{normalAccounts.filter((a) => a.id !== accountId).map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
             ) : (
@@ -593,12 +690,12 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
                   onValueChange={(value) => {
                     setCategoryId(value);
                     setSubCategoryId("");
-                    const hasSubcategories = categories.some((c) => c.parent_id === value);
+                    const hasSubcategories = categories.some((cat) => cat.parent_id === value);
                     window.setTimeout(() => (hasSubcategories ? subCategoryRef.current : projectRef.current)?.focus(), 0);
                   }}
                 >
                   <SelectTrigger ref={categoryRef}><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>{parentCats.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
+                  <SelectContent>{parentCats.map((cat) => <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>)}</SelectContent>
                 </Select>
                 {newCatOpen && (
                   <div className="flex gap-2">
@@ -611,7 +708,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
             )}
           </div>
 
-          {type !== "transfer" && categoryId && (
+          {purpose === "normal" && type !== "transfer" && categoryId && (
             <div className="grid gap-2">
               <div className="flex items-center justify-between">
                 <Label>Subcategory <span className="text-xs text-muted-foreground">(e.g. labour name)</span></Label>
