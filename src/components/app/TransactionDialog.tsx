@@ -335,31 +335,164 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
     }
   };
 
+  const ensurePartnerAccounts = async () => {
+    let float = partnerFloatAccount;
+    let drawings = partnerDrawingsAccount;
+    if (float && drawings) return { float, drawings };
+
+    const { data: userData } = await supabase.auth.getUser();
+    const uid = userData.user?.id;
+    if (!uid) throw new Error("You must be signed in");
+
+    const rows: Array<Record<string, unknown>> = [];
+    if (!float) {
+      rows.push({
+        user_id: uid,
+        name: "Partner Float",
+        type: PARTNER_FLOAT_ACCOUNT_TYPE,
+        icon: "wallet-cards",
+        color: "#0EA5E9",
+        opening_balance: 0,
+        currency: normalAccounts[0]?.currency ?? "USD",
+        archived: false,
+      });
+    }
+    if (!drawings) {
+      rows.push({
+        user_id: uid,
+        name: "Partner Drawings",
+        type: PARTNER_DRAWINGS_ACCOUNT_TYPE,
+        icon: "hand-coins",
+        color: "#F59E0B",
+        opening_balance: 0,
+        currency: normalAccounts[0]?.currency ?? "USD",
+        archived: false,
+      });
+    }
+
+    if (rows.length > 0) {
+      const { data, error } = await supabase.from("accounts").insert(rows as never).select("*");
+      if (error) throw error;
+      for (const account of (data ?? []) as unknown as Account[]) {
+        if (account.type === PARTNER_FLOAT_ACCOUNT_TYPE) float = account;
+        if (account.type === PARTNER_DRAWINGS_ACCOUNT_TYPE) drawings = account;
+      }
+    }
+
+    if (!float || !drawings) throw new Error("Could not initialize partner tracking");
+    return { float, drawings };
+  };
+
   const submit = async () => {
     if (create.isPending || update.isPending) return;
     const amt = parseFloat(amount);
     if (!amt || amt <= 0) return toast.error("Enter a valid amount");
-    if (!accountId) return toast.error("Select an account");
-    if (type === "transfer" && !toAccountId) return toast.error("Select destination account");
-    const tags = tagsInput
+
+    const userTags = tagsInput
       .split(",")
       .map((s) => s.trim().replace(/^#/, ""))
-      .filter(Boolean);
-    const payload = {
-      type,
-      amount: amt,
-      category_id: type === "transfer" ? null : (subCategoryId || categoryId || null),
-      account_id: accountId,
-      to_account_id: type === "transfer" ? toAccountId : null,
-      vendor: vendor || null,
-      notes: notes || null,
-      project_id: projectId || null,
-      tags: tags.length ? tags : null,
-      occurred_at: new Date(occurredAt).toISOString(),
-      receipt_path: receiptPath,
-      status: "paid" as const,
-    };
+      .filter(Boolean)
+      .filter((tag) => !PARTNER_SYSTEM_TAGS.has(tag.toLowerCase()));
+
+    let payload: Partial<Transaction>;
+
     try {
+      if (purpose !== "normal") {
+        if (!projectId) return toast.error("Select a project for partner money tracking");
+        const system = await ensurePartnerAccounts();
+
+        if (purpose === "partner_advance") {
+          if (!accountId) return toast.error("Select the account you paid from");
+          payload = {
+            type: "transfer",
+            amount: amt,
+            category_id: null,
+            account_id: accountId,
+            to_account_id: system.float.id,
+            vendor: vendor || "Execution Partner",
+            notes: notes || null,
+            project_id: projectId,
+            tags: [...userTags, PARTNER_ADVANCE_TAG],
+            occurred_at: new Date(occurredAt).toISOString(),
+            receipt_path: receiptPath,
+            payment_method: editing?.payment_method ?? null,
+            status: "paid",
+          };
+        } else if (purpose === "partner_drawing") {
+          payload = {
+            type: "transfer",
+            amount: amt,
+            category_id: null,
+            account_id: system.float.id,
+            to_account_id: system.drawings.id,
+            vendor: vendor || "Execution Partner",
+            notes: notes || null,
+            project_id: projectId,
+            tags: [...userTags, PARTNER_DRAWING_TAG],
+            occurred_at: new Date(occurredAt).toISOString(),
+            receipt_path: receiptPath,
+            payment_method: null,
+            status: "paid",
+          };
+        } else {
+          if (!toAccountId) return toast.error("Select the account receiving the returned money");
+          payload = {
+            type: "transfer",
+            amount: amt,
+            category_id: null,
+            account_id: system.float.id,
+            to_account_id: toAccountId,
+            vendor: vendor || "Execution Partner",
+            notes: notes || null,
+            project_id: projectId,
+            tags: [...userTags, PARTNER_RETURN_TAG],
+            occurred_at: new Date(occurredAt).toISOString(),
+            receipt_path: receiptPath,
+            payment_method: null,
+            status: "paid",
+          };
+        }
+      } else {
+        if (type === "expense" && spentBy === "partner") {
+          if (!projectId) return toast.error("Select a project when the expense was spent by partner");
+          if (!categoryId) return toast.error("Select an expense category");
+          const system = await ensurePartnerAccounts();
+          payload = {
+            type: "expense",
+            amount: amt,
+            category_id: subCategoryId || categoryId,
+            account_id: system.float.id,
+            to_account_id: null,
+            vendor: vendor || null,
+            notes: notes || null,
+            project_id: projectId,
+            tags: [...userTags, PARTNER_SPEND_TAG],
+            occurred_at: new Date(occurredAt).toISOString(),
+            receipt_path: receiptPath,
+            payment_method: "Partner Float",
+            status: "paid",
+          };
+        } else {
+          if (!accountId) return toast.error("Select an account");
+          if (type === "transfer" && !toAccountId) return toast.error("Select destination account");
+          payload = {
+            type,
+            amount: amt,
+            category_id: type === "transfer" ? null : (subCategoryId || categoryId || null),
+            account_id: accountId,
+            to_account_id: type === "transfer" ? toAccountId : null,
+            vendor: vendor || null,
+            notes: notes || null,
+            project_id: projectId || null,
+            tags: userTags.length ? userTags : null,
+            occurred_at: new Date(occurredAt).toISOString(),
+            receipt_path: receiptPath,
+            payment_method: editing?.payment_method === "Partner Float" ? null : (editing?.payment_method ?? null),
+            status: "paid",
+          };
+        }
+      }
+
       if (editing) await update.mutateAsync({ id: editing.id, ...payload });
       else await create.mutateAsync(payload);
       toast.success(editing ? "Transaction updated" : "Transaction added");
