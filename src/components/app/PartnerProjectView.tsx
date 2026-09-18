@@ -87,7 +87,8 @@ export function PartnerProjectView({ projectId }: Props) {
     const projectedProfit = quoted - allExpenses;
     const partnerEntitlement = projectedProfit * (partnerShare / 100);
     const ownerEntitlement = projectedProfit - partnerEntitlement;
-    const partnerStillDue = partnerEntitlement - drawings;
+    const partnerOutOfPocket = Math.max(0, -balance);
+    const partnerStillDue = partnerEntitlement - drawings + partnerOutOfPocket;
     return {
       given,
       partnerExpenses,
@@ -102,6 +103,7 @@ export function PartnerProjectView({ projectId }: Props) {
       projectedProfit,
       partnerEntitlement,
       ownerEntitlement,
+      partnerOutOfPocket,
       partnerStillDue,
     };
   }, [ledger, projectTxs, project, partnerShare]);
@@ -197,6 +199,7 @@ export function PartnerProjectView({ projectId }: Props) {
             <SettlementRow label="Your projected share" value={formatCurrency(totals.ownerEntitlement, currency)} />
             <SettlementRow label="Partner projected share" value={formatCurrency(totals.partnerEntitlement, currency)} />
             <SettlementRow label="Already taken as drawings" value={formatCurrency(totals.drawings, currency)} />
+            {totals.partnerOutOfPocket > 0 && <SettlementRow label="Reimburse partner (own money spent)" value={formatCurrency(totals.partnerOutOfPocket, currency)} />}
             <div className="my-1 border-t" />
             <SettlementRow
               label={totals.partnerStillDue >= 0 ? "Partner still due" : "Partner overdrawn"}
