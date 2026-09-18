@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { ArrowDownLeft, ArrowUpRight, HandCoins, Landmark, Pencil, ReceiptIndianRupee, RotateCcw, ShoppingCart, WalletCards } from "lucide-react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { ArrowUpRight, HandCoins, Pencil, RotateCcw, ShoppingCart, WalletCards } from "lucide-react";
 import { format } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { useQueryClient } from "@tanstack/react-query";
@@ -15,7 +15,6 @@ import {
   useCategories,
   useMutateEntity,
   useProjects,
-  useSoftDeleteTx,
   useTransactions,
   type Account,
   type Category,
@@ -60,8 +59,7 @@ export function PartnerProjectView({ projectId }: Props) {
   const { data: accounts = [] } = useAccounts();
   const { data: categories = [] } = useCategories();
   const { data: allTx = [] } = useTransactions();
-  const { create: createTx, update: updateTx } = useMutateEntity<Transaction>("transactions", ["transactions", "accounts"]);
-  const softDeleteTx = useSoftDeleteTx();
+  const { create: createTx } = useMutateEntity<Transaction>("transactions", ["transactions", "accounts"]);
 
   const project = projects.find((item) => item.id === projectId);
   const floatAccount = accounts.find((item) => item.type === PARTNER_FLOAT_ACCOUNT_TYPE) ?? null;
@@ -402,7 +400,7 @@ function actionSuccess(mode: ActionMode | null) {
   return "Partner ledger updated";
 }
 
-function Metric({ label, value, icon, valueClass = "" }: { label: string; value: string; icon: React.ReactNode; valueClass?: string }) {
+function Metric({ label, value, icon, valueClass = "" }: { label: string; value: string; icon: ReactNode; valueClass?: string }) {
   return <div className="rounded-2xl border bg-card p-4 shadow-[var(--shadow-soft)]"><div className="flex items-center gap-2 text-muted-foreground">{icon}<p className="text-[10px] uppercase tracking-wide">{label}</p></div><p className={`mt-2 text-xl font-semibold tabular-nums ${valueClass}`}>{value}</p></div>;
 }
 
