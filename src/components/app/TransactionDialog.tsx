@@ -19,6 +19,7 @@ import {
 import { useAccounts, useCategories, useProjects, useMutateEntity, useCreateCategory, type Transaction } from "@/hooks/useFinance";
 import { useTransactions } from "@/hooks/useFinance";
 import { toast } from "sonner";
+import { PARTNER_DRAWINGS_ACCOUNT_TYPE } from "@/lib/partnerLedger";
 
 type Props = {
   open: boolean;
@@ -390,7 +391,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
                 }}
               >
                 <SelectTrigger ref={accountRef}><SelectValue placeholder="Select" /></SelectTrigger>
-                <SelectContent>{accounts.map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
+                <SelectContent>{accounts.filter((a) => a.type !== PARTNER_DRAWINGS_ACCOUNT_TYPE || a.id === accountId).map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
               </Select>
             </div>
             {type === "transfer" ? (
@@ -404,7 +405,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
                   }}
                 >
                   <SelectTrigger ref={toAccountRef}><SelectValue placeholder="Select" /></SelectTrigger>
-                  <SelectContent>{accounts.filter((a) => a.id !== accountId).map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
+                  <SelectContent>{accounts.filter((a) => a.id !== accountId && (a.type !== PARTNER_DRAWINGS_ACCOUNT_TYPE || a.id === toAccountId)).map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
             ) : (
