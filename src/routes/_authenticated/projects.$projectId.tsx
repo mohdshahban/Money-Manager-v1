@@ -13,7 +13,8 @@ import { useProfile } from "@/hooks/useProfile";
 import { formatCurrency } from "@/lib/format";
 import { TransactionDialog } from "@/components/app/TransactionDialog";
 import { TransactionCollection, type TransactionViewMode } from "@/components/app/TransactionCollection";
-import { ReceiptIndicator } from "@/components/app/ReceiptIndicator";\nimport { TeamProjectView } from "@/components/app/TeamProjectView";
+import { ReceiptIndicator } from "@/components/app/ReceiptIndicator";
+import { TeamProjectView } from "@/components/app/TeamProjectView";
 import { toast } from "sonner";
 import { endOfDay, endOfMonth, endOfWeek, format, startOfDay, startOfMonth, startOfWeek } from "date-fns";
 
