@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS public.projects (
   start_date DATE,
   end_date DATE,
   notes TEXT,
+  partner_module_enabled BOOLEAN NOT NULL DEFAULT false,
   color TEXT DEFAULT '#6366F1',
   archived BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
