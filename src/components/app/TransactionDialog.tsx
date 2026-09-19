@@ -233,6 +233,18 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
     [projects, recentProjectIds],
   );
 
+  const selectedProject = useMemo(
+    () => projects.find((p) => p.id === projectId) ?? null,
+    [projects, projectId],
+  );
+  const partnerModuleEnabled = !!selectedProject?.partner_module_enabled;
+
+  useEffect(() => {
+    if (partnerModuleEnabled) return;
+    if (spentBy === "partner") setSpentBy("me");
+    if (toAccountId === "__partner") setToAccountId("");
+  }, [partnerModuleEnabled, spentBy, toAccountId]);
+
   const suggestedTags = useMemo(() => {
     const selected = new Set(
       tagsInput.split(",").map((s) => s.trim().replace(/^#/, "").toLowerCase()).filter(Boolean),
@@ -363,6 +375,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
     try {
       if (type === "expense" && spentBy === "partner") {
         if (!projectId) return toast.error("Select a project when the expense was spent by partner");
+        if (!partnerModuleEnabled) return toast.error("Enable Partner Tracking for this project first");
         if (!categoryId) return toast.error("Select an expense category");
         const partnerAccount = await ensurePartnerAccount();
         payload = {
@@ -382,6 +395,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
         };
       } else if (type === "transfer" && toAccountId === "__partner") {
         if (!accountId) return toast.error("Select the account you paid from");
+        if (!partnerModuleEnabled) return toast.error("Enable Partner Tracking for this project first");
         if (!projectId) return toast.error("Select a project for money paid to partner");
         const partnerAccount = await ensurePartnerAccount();
         payload = {
@@ -471,7 +485,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
               onKeyDown={(e) => {
                 if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) {
                   e.preventDefault();
-                  if (type === "expense" && spentBy === "partner") categoryRef.current?.focus();
+                  if (type === "expense" && partnerModuleEnabled && spentBy === "partner") categoryRef.current?.focus();
                   else accountRef.current?.focus();
                 }
               }}
@@ -479,7 +493,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
             />
           </div>
 
-          {type === "expense" && (
+          {type === "expense" && partnerModuleEnabled && (
             <div className="grid gap-2">
               <Label>Spent by</Label>
               <div className="grid grid-cols-2 gap-2">
@@ -510,8 +524,8 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
 
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-2">
-              <Label>{type === "expense" && spentBy === "partner" ? "Paid by" : "Account"}</Label>
-              {type === "expense" && spentBy === "partner" ? (
+              <Label>{type === "expense" && partnerModuleEnabled && spentBy === "partner" ? "Paid by" : "Account"}</Label>
+              {type === "expense" && partnerModuleEnabled && spentBy === "partner" ? (
                 <div className="flex h-9 items-center rounded-md border bg-muted/45 px-3 text-sm font-medium">Partner</div>
               ) : (
                 <Select
@@ -539,8 +553,12 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
                 >
                   <SelectTrigger ref={toAccountRef}><SelectValue placeholder="Select" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__partner">Paid to Partner</SelectItem>
-                    <SelectSeparator />
+                    {partnerModuleEnabled && (
+                      <>
+                        <SelectItem value="__partner">Paid to Partner</SelectItem>
+                        <SelectSeparator />
+                      </>
+                    )}
                     {normalAccounts.filter((a) => a.id !== accountId).map((a) => <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>)}
                   </SelectContent>
                 </Select>
@@ -609,7 +627,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
           <div className="grid gap-2">
             <Label>
               Project <span className="text-xs text-muted-foreground">
-                {(type === "expense" && spentBy === "partner") || (type === "transfer" && toAccountId === "__partner") ? "(required)" : "(optional)"}
+                {partnerModuleEnabled && ((type === "expense" && spentBy === "partner") || (type === "transfer" && toAccountId === "__partner")) ? "(required)" : "(optional)"}
               </span>
             </Label>
             <Select

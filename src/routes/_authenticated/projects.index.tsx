@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Switch } from "@/components/ui/switch";
 import { useProjects, useTransactions, useMutateEntity, type Project } from "@/hooks/useFinance";
 import { useProfile } from "@/hooks/useProfile";
 import { formatCurrency } from "@/lib/format";
@@ -28,7 +29,7 @@ function ProjectsPage() {
   const [deleting, setDeleting] = useState<Project | null>(null);
   const [query, setQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [form, setForm] = useState({ name: "", client_name: "", site_address: "", quoted_amount: "", budget: "", status: "active", notes: "" });
+  const [form, setForm] = useState({ name: "", client_name: "", site_address: "", quoted_amount: "", budget: "", status: "active", notes: "", partner_module_enabled: false });
 
   const totals = useMemo(() => {
     const map = new Map<string, { spent: number; income: number }>();
@@ -72,10 +73,11 @@ function ProjectsPage() {
       budget: parseFloat(form.budget) || 0,
       status: form.status as Project["status"],
       notes: form.notes || null,
+      partner_module_enabled: form.partner_module_enabled,
     });
     toast.success("Project created");
     setOpen(false);
-    setForm({ name: "", client_name: "", site_address: "", quoted_amount: "", budget: "", status: "active", notes: "" });
+    setForm({ name: "", client_name: "", site_address: "", quoted_amount: "", budget: "", status: "active", notes: "", partner_module_enabled: false });
   };
 
   return (
@@ -192,6 +194,13 @@ function ProjectsPage() {
               <div className="grid gap-2"><Label>Internal budget</Label><Input type="number" step="0.01" value={form.budget} onChange={(e) => setForm({ ...form, budget: e.target.value })} /></div>
             </div>
             <div className="grid gap-2"><Label>Notes</Label><Textarea rows={2} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
+            <div className="flex items-start justify-between gap-4 rounded-xl border bg-muted/25 p-3">
+              <div>
+                <Label htmlFor="new-project-partner-module" className="cursor-pointer">Enable Partner Tracking</Label>
+                <p className="mt-1 text-xs text-muted-foreground">Track money paid to partner, partner-paid expenses and profit settlement for this project.</p>
+              </div>
+              <Switch id="new-project-partner-module" checked={form.partner_module_enabled} onCheckedChange={(checked) => setForm({ ...form, partner_module_enabled: checked })} />
+            </div>
             <div className="flex justify-end gap-2 pt-1"><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={submit} disabled={create.isPending}>Create</Button></div>
           </div>
         </DialogContent>
@@ -218,7 +227,7 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: "po
 }
 
 function EditProjectQuick({ project, onClose, onSave }: { project: Project; onClose: () => void; onSave: (patch: Partial<Project>) => Promise<void> }) {
-  const [form, setForm] = useState({ name: project.name, client_name: project.client_name ?? "", quoted_amount: String(project.quoted_amount ?? ""), status: project.status, start_date: project.start_date ?? "" });
+  const [form, setForm] = useState({ name: project.name, client_name: project.client_name ?? "", quoted_amount: String(project.quoted_amount ?? ""), status: project.status, start_date: project.start_date ?? "", partner_module_enabled: project.partner_module_enabled ?? false });
   return (
     <Dialog open onOpenChange={(next) => !next && onClose()}>
       <DialogContent className="sm:max-w-lg">
@@ -231,7 +240,14 @@ function EditProjectQuick({ project, onClose, onSave }: { project: Project; onCl
             <div className="grid gap-2"><Label>Status</Label><Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as Project["status"] })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["planning", "active", "on_hold", "completed", "cancelled"].map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select></div>
           </div>
           <div className="grid gap-2"><Label>Start date</Label><Input type="date" value={form.start_date} onChange={(e) => setForm({ ...form, start_date: e.target.value })} /></div>
-          <div className="flex justify-end gap-2 pt-1"><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={async () => onSave({ name: form.name, client_name: form.client_name || null, quoted_amount: parseFloat(form.quoted_amount) || 0, status: form.status, start_date: form.start_date || null })}>Save</Button></div>
+          <div className="flex items-start justify-between gap-4 rounded-xl border bg-muted/25 p-3">
+            <div>
+              <Label htmlFor="edit-project-partner-module" className="cursor-pointer">Enable Partner Tracking</Label>
+              <p className="mt-1 text-xs text-muted-foreground">Hide or show partner features for this project. Existing partner transactions are never deleted.</p>
+            </div>
+            <Switch id="edit-project-partner-module" checked={form.partner_module_enabled} onCheckedChange={(checked) => setForm({ ...form, partner_module_enabled: checked })} />
+          </div>
+          <div className="flex justify-end gap-2 pt-1"><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={async () => onSave({ name: form.name, client_name: form.client_name || null, quoted_amount: parseFloat(form.quoted_amount) || 0, status: form.status, start_date: form.start_date || null, partner_module_enabled: form.partner_module_enabled })}>Save</Button></div>
         </div>
       </DialogContent>
     </Dialog>

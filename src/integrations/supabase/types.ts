@@ -204,6 +204,7 @@ export type Database = {
           id: string
           name: string
           notes: string | null
+          partner_module_enabled: boolean
           quoted_amount: number
           site_address: string | null
           start_date: string | null
@@ -222,6 +223,7 @@ export type Database = {
           id?: string
           name: string
           notes?: string | null
+          partner_module_enabled?: boolean
           quoted_amount?: number
           site_address?: string | null
           start_date?: string | null
@@ -240,6 +242,7 @@ export type Database = {
           id?: string
           name?: string
           notes?: string | null
+          partner_module_enabled?: boolean
           quoted_amount?: number
           site_address?: string | null
           start_date?: string | null

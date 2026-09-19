@@ -73,6 +73,7 @@ export type Project = {
   notes: string | null;
   color: string | null;
   archived: boolean;
+  partner_module_enabled: boolean;
 };
 
 const t = (name: string) => supabase.from(name as never);
