@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Switch } from "@/components/ui/switch";
 import { useProjects, useTransactions, useCategories, useAccounts, useMutateEntity, useSoftDeleteTx, type Project, type Transaction } from "@/hooks/useFinance";
 import { useProfile } from "@/hooks/useProfile";
 import { formatCurrency } from "@/lib/format";
@@ -160,7 +161,7 @@ function ProjectDetail() {
           <TabsTrigger value="overview" className="gap-1.5"><WalletCards className="h-4 w-4" /> Overview</TabsTrigger>
           <TabsTrigger value="transactions" className="gap-1.5"><FileText className="h-4 w-4" /> Transactions</TabsTrigger>
           <TabsTrigger value="team" className="gap-1.5"><Users className="h-4 w-4" /> Team</TabsTrigger>
-          <TabsTrigger value="partner" className="gap-1.5"><HandCoins className="h-4 w-4" /> Partner</TabsTrigger>
+          {project.partner_module_enabled && <TabsTrigger value="partner" className="gap-1.5"><HandCoins className="h-4 w-4" /> Partner</TabsTrigger>}
           <TabsTrigger value="analytics" className="gap-1.5"><BarChart3 className="h-4 w-4" /> Analytics</TabsTrigger>
           <TabsTrigger value="payments" className="gap-1.5"><WalletCards className="h-4 w-4" /> Payments</TabsTrigger>
           <TabsTrigger value="receipts" className="gap-1.5"><ReceiptText className="h-4 w-4" /> Files & receipts</TabsTrigger>
@@ -224,9 +225,11 @@ function ProjectDetail() {
           <TeamProjectView projectId={projectId} />
         </TabsContent>
 
-        <TabsContent value="partner" className="mt-0">
-          <PartnerProjectView projectId={projectId} />
-        </TabsContent>
+        {project.partner_module_enabled && (
+          <TabsContent value="partner" className="mt-0">
+            <PartnerProjectView projectId={projectId} />
+          </TabsContent>
+        )}
 
         <TabsContent value="analytics" className="mt-0 grid gap-4 xl:grid-cols-2">
           <BreakdownCard title="Spend by category">
@@ -270,7 +273,7 @@ function BreakdownCard({ title, children }: { title: string; children: React.Rea
 function Empty({ text }: { text: string }) { return <div className="rounded-2xl border border-dashed bg-card px-6 py-12 text-center text-sm text-muted-foreground">{text}</div>; }
 
 function EditProjectDialog({ open, onOpenChange, project, onSave }: { open: boolean; onOpenChange: (open: boolean) => void; project: Project; onSave: (patch: Partial<Project>) => Promise<void> }) {
-  const [form, setForm] = useState({ name: project.name, client_name: project.client_name ?? "", site_address: project.site_address ?? "", quoted_amount: String(project.quoted_amount ?? ""), budget: String(project.budget ?? ""), status: project.status, notes: project.notes ?? "" });
+  const [form, setForm] = useState({ name: project.name, client_name: project.client_name ?? "", site_address: project.site_address ?? "", quoted_amount: String(project.quoted_amount ?? ""), budget: String(project.budget ?? ""), status: project.status, notes: project.notes ?? "", partner_module_enabled: project.partner_module_enabled ?? false });
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
@@ -281,7 +284,14 @@ function EditProjectDialog({ open, onOpenChange, project, onSave }: { open: bool
           <div className="grid gap-2"><Label>Site address</Label><Input value={form.site_address} onChange={(e) => setForm({ ...form, site_address: e.target.value })} /></div>
           <div className="grid grid-cols-2 gap-3"><div className="grid gap-2"><Label>Quoted amount</Label><Input type="number" value={form.quoted_amount} onChange={(e) => setForm({ ...form, quoted_amount: e.target.value })} /></div><div className="grid gap-2"><Label>Budget</Label><Input type="number" value={form.budget} onChange={(e) => setForm({ ...form, budget: e.target.value })} /></div></div>
           <div className="grid gap-2"><Label>Notes</Label><Textarea rows={3} value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} /></div>
-          <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button onClick={async () => { await onSave({ name: form.name, client_name: form.client_name || null, site_address: form.site_address || null, quoted_amount: parseFloat(form.quoted_amount) || 0, budget: parseFloat(form.budget) || 0, status: form.status, notes: form.notes || null }); onOpenChange(false); }}>Save</Button></div>
+          <div className="flex items-start justify-between gap-4 rounded-xl border bg-muted/25 p-3">
+            <div>
+              <Label htmlFor="detail-project-partner-module" className="cursor-pointer">Enable Partner Tracking</Label>
+              <p className="mt-1 text-xs text-muted-foreground">Controls the Partner tab and partner options in transaction entry for this project.</p>
+            </div>
+            <Switch id="detail-project-partner-module" checked={form.partner_module_enabled} onCheckedChange={(checked) => setForm({ ...form, partner_module_enabled: checked })} />
+          </div>
+          <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button onClick={async () => { await onSave({ name: form.name, client_name: form.client_name || null, site_address: form.site_address || null, quoted_amount: parseFloat(form.quoted_amount) || 0, budget: parseFloat(form.budget) || 0, status: form.status, notes: form.notes || null, partner_module_enabled: form.partner_module_enabled }); onOpenChange(false); }}>Save</Button></div>
         </div>
       </DialogContent>
     </Dialog>
