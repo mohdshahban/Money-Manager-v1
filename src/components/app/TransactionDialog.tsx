@@ -646,6 +646,8 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
             <Select
               value={projectId || "__none"}
               onValueChange={(value) => {
+                const linkedMember = teamOptions.find((member) => member.id === teamMemberId);
+                if (linkedMember && vendor.trim() === linkedMember.name) setVendor("");
                 setProjectId(value === "__none" ? "" : value);
                 setTeamMemberId("");
                 window.setTimeout(() => vendorRef.current?.focus(), 0);
