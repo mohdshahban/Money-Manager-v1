@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { format } from "date-fns";
 import {
   Boxes,
@@ -111,6 +111,7 @@ export function MaterialProjectView() {
   const [projectId, setProjectId] = useState("");
   const [search, setSearch] = useState("");
   const [purchaseOpen, setPurchaseOpen] = useState(false);
+  const [purchaseSourceId, setPurchaseSourceId] = useState("");
   const [areaOpen, setAreaOpen] = useState(false);
   const [workOpen, setWorkOpen] = useState(false);
   const [usageOpen, setUsageOpen] = useState(false);
@@ -401,7 +402,7 @@ export function MaterialProjectView() {
                         <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-medium text-emerald-600">Linked</span>
                       ) : (
                         <Button size="sm" variant="outline" onClick={() => {
-                          window.dispatchEvent(new CustomEvent("material-purchase-from-transaction", { detail: { transactionId: tx.id } }));
+                          setPurchaseSourceId(tx.id);
                           setPurchaseOpen(true);
                         }}>
                           Use as purchase reference
@@ -418,7 +419,11 @@ export function MaterialProjectView() {
 
       <PurchaseDialog
         open={purchaseOpen}
-        onOpenChange={setPurchaseOpen}
+        onOpenChange={(next) => {
+          setPurchaseOpen(next);
+          if (!next) setPurchaseSourceId("");
+        }}
+        initialSourceTransactionId={purchaseSourceId}
         items={material.items}
         transactions={likelyMaterialTxs}
         categories={categories}
@@ -447,7 +452,7 @@ export function MaterialProjectView() {
   );
 }
 
-function Summary({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
+function Summary({ label, value, icon }: { label: string; value: string; icon: ReactNode }) {
   return (
     <div className="rounded-2xl border bg-card p-4 shadow-[var(--shadow-soft)]">
       <div className="flex items-center gap-2 text-muted-foreground">{icon}<p className="text-[10px] uppercase tracking-wide">{label}</p></div>
@@ -608,6 +613,7 @@ function UsageLines({
 function PurchaseDialog({
   open,
   onOpenChange,
+  initialSourceTransactionId,
   items,
   transactions,
   categories,
@@ -616,6 +622,7 @@ function PurchaseDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  initialSourceTransactionId?: string;
   items: MaterialItem[];
   transactions: Transaction[];
   categories: Category[];
@@ -638,14 +645,8 @@ function PurchaseDialog({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
-    const listener = (event: Event) => {
-      const custom = event as CustomEvent<{ transactionId?: string }>;
-      if (custom.detail?.transactionId) setSourceTransactionId(custom.detail.transactionId);
-    };
-    window.addEventListener("material-purchase-from-transaction", listener);
-    return () => window.removeEventListener("material-purchase-from-transaction", listener);
-  }, [open]);
+    if (open) setSourceTransactionId(initialSourceTransactionId ?? "");
+  }, [open, initialSourceTransactionId]);
 
   const reset = () => {
     setItemId("");
