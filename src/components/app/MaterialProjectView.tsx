@@ -472,10 +472,10 @@ export function MaterialProjectView() {
         }}
         initialSourceTransactionId={purchaseSourceId}
         items={material.items}
+        batches={material.batches}
         transactions={projectTxs.filter((tx) => tx.type === "expense")}
         categories={categories}
-        createItem={mutations.createItem.mutateAsync}
-        createPurchase={mutations.createPurchase.mutateAsync}
+        createPurchaseBatch={mutations.createPurchaseBatch.mutateAsync}
       />
 
       <AreaDialog open={areaOpen} onOpenChange={setAreaOpen} createArea={mutations.createArea.mutateAsync} />
