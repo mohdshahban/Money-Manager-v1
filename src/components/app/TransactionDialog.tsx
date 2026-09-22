@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/select";
 import { useAccounts, useCategories, useProjects, useMutateEntity, useCreateCategory, type Account, type Transaction } from "@/hooks/useFinance";
 import { useTransactions } from "@/hooks/useFinance";
+import { useProjectTeamMembers } from "@/hooks/useProjectTeam";
 import { toast } from "sonner";
 import {
   PARTNER_ADVANCE_TAG,
@@ -70,6 +71,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
   const [accountId, setAccountId] = useState<string>("");
   const [toAccountId, setToAccountId] = useState<string>("");
   const [vendor, setVendor] = useState("");
+  const [teamMemberId, setTeamMemberId] = useState("");
   const [notes, setNotes] = useState("");
   const [projectId, setProjectId] = useState<string>("");
   const [tagsInput, setTagsInput] = useState("");
@@ -85,6 +87,12 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
   const [receiptPath, setReceiptPath] = useState<string | null>(null);
   const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+
+  const { data: projectTeamMembers = [] } = useProjectTeamMembers(projectId || null);
+  const teamOptions = useMemo(
+    () => projectTeamMembers.filter((member) => member.active || member.id === teamMemberId),
+    [projectTeamMembers, teamMemberId],
+  );
 
   const normalAccounts = useMemo(() => accounts.filter((a) => !isPartnerSystemAccountType(a.type)), [accounts]);
   const partnerFloatAccount = accounts.find((a) => a.type === PARTNER_FLOAT_ACCOUNT_TYPE) ?? null;
@@ -127,6 +135,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
       else setAccountId(editing.account_id ?? normalAccounts[0]?.id ?? "");
       setToAccountId(isPaidToPartner ? "__partner" : (editing.to_account_id ?? ""));
       setVendor(editing.vendor ?? "");
+      setTeamMemberId(editing.team_member_id ?? "");
       setNotes(editing.notes ?? "");
       setProjectId(editing.project_id ?? "");
       setTagsInput(withoutPartnerSystemTags(editing.tags).join(", "));
@@ -145,6 +154,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
       setAccountId(normalAccounts[0]?.id ?? "");
       setToAccountId("");
       setVendor("");
+      setTeamMemberId("");
       setNotes("");
       setProjectId("");
       setTagsInput("");
@@ -391,6 +401,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
           occurred_at: new Date(occurredAt).toISOString(),
           receipt_path: receiptPath,
           payment_method: "Partner",
+          team_member_id: teamMemberId || null,
           status: "paid",
         };
       } else if (type === "transfer" && toAccountId === "__partner") {
@@ -411,6 +422,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
           occurred_at: new Date(occurredAt).toISOString(),
           receipt_path: receiptPath,
           payment_method: editing?.payment_method === "Partner Float" ? null : (editing?.payment_method ?? null),
+          team_member_id: null,
           status: "paid",
         };
       } else {
@@ -429,6 +441,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
           occurred_at: new Date(occurredAt).toISOString(),
           receipt_path: receiptPath,
           payment_method: editing?.payment_method === "Partner Float" || editing?.payment_method === "Partner" ? null : (editing?.payment_method ?? null),
+          team_member_id: type === "expense" ? (teamMemberId || null) : null,
           status: "paid",
         };
       }
@@ -633,7 +646,10 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
             <Select
               value={projectId || "__none"}
               onValueChange={(value) => {
+                const linkedMember = teamOptions.find((member) => member.id === teamMemberId);
+                if (linkedMember && vendor.trim() === linkedMember.name) setVendor("");
                 setProjectId(value === "__none" ? "" : value);
+                setTeamMemberId("");
                 window.setTimeout(() => vendorRef.current?.focus(), 0);
               }}
             >
@@ -668,6 +684,35 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
               </SelectContent>
             </Select>
           </div>
+
+          {type === "expense" && projectId && teamOptions.length > 0 && (
+            <div className="grid gap-2">
+              <Label>Project Team <span className="text-xs text-muted-foreground">(optional)</span></Label>
+              <Select
+                value={teamMemberId || "__none"}
+                onValueChange={(value) => {
+                  const next = value === "__none" ? "" : value;
+                  setTeamMemberId(next);
+                  if (next) {
+                    const member = teamOptions.find((item) => item.id === next);
+                    if (member) setVendor(member.name);
+                  }
+                }}
+              >
+                <SelectTrigger><SelectValue placeholder="Select assigned team member" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">No team member</SelectItem>
+                  <SelectSeparator />
+                  {teamOptions.map((member) => (
+                    <SelectItem key={member.id} value={member.id}>
+                      {member.name} · {member.trade}{Number(member.contract_amount) > 0 ? ` · Contract ₹${Number(member.contract_amount).toLocaleString("en-IN")}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">Only people/teams assigned to {selectedProject?.name ?? "this project"} are shown.</p>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3">
             <div className="grid gap-2">
