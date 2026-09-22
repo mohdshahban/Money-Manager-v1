@@ -685,7 +685,7 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
             </Select>
           </div>
 
-          {type === "expense" && projectId && teamOptions.length > 0 && (
+          {type === "expense" && projectId && (
             <div className="grid gap-2">
               <Label>Project Team <span className="text-xs text-muted-foreground">(optional)</span></Label>
               <Select
@@ -699,18 +699,26 @@ export function TransactionDialog({ open, onOpenChange, editing }: Props) {
                   }
                 }}
               >
-                <SelectTrigger><SelectValue placeholder="Select assigned team member" /></SelectTrigger>
+                <SelectTrigger disabled={teamOptions.length === 0}><SelectValue placeholder={teamOptions.length === 0 ? "No team assigned to this project" : "Select assigned team member"} /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none">No team member</SelectItem>
-                  <SelectSeparator />
+                  {teamOptions.length > 0 && <SelectSeparator />}
                   {teamOptions.map((member) => (
                     <SelectItem key={member.id} value={member.id}>
-                      {member.name} · {member.trade}{Number(member.contract_amount) > 0 ? ` · Contract ₹${Number(member.contract_amount).toLocaleString("en-IN")}` : ""}
+                      {member.name} · {member.trade} · {member.payment_basis === "service_rate"
+                        ? "Service-wise"
+                        : Number(member.contract_amount) > 0
+                          ? `Fixed ₹${Number(member.contract_amount).toLocaleString("en-IN")}`
+                          : "Fixed contract"}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-              <p className="text-[11px] text-muted-foreground">Only people/teams assigned to {selectedProject?.name ?? "this project"} are shown.</p>
+              <p className="text-[11px] text-muted-foreground">
+                {teamOptions.length > 0
+                  ? `Only people/teams assigned to ${selectedProject?.name ?? "this project"} are shown.`
+                  : `No team member has been assigned to ${selectedProject?.name ?? "this project"} yet.`}
+              </p>
             </div>
           )}
 
