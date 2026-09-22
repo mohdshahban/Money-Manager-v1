@@ -149,6 +149,117 @@ DROP TRIGGER IF EXISTS tx_updated ON public.transactions;
 CREATE TRIGGER tx_updated BEFORE UPDATE ON public.transactions
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+-- ---------- materials / inventory ----------
+CREATE TABLE IF NOT EXISTS public.material_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  unit TEXT NOT NULL DEFAULT 'pcs',
+  category TEXT,
+  archived BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS public.project_material_purchases (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  material_item_id UUID NOT NULL REFERENCES public.material_items(id) ON DELETE RESTRICT,
+  quantity NUMERIC(14,3) NOT NULL CHECK (quantity > 0),
+  purchased_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  source_transaction_id UUID REFERENCES public.transactions(id) ON DELETE SET NULL,
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS public.project_material_areas (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS public.project_material_work_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  area_id UUID NOT NULL REFERENCES public.project_material_areas(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  dimensions TEXT,
+  notes TEXT,
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS public.project_material_usage (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  area_id UUID NOT NULL REFERENCES public.project_material_areas(id) ON DELETE CASCADE,
+  work_item_id UUID REFERENCES public.project_material_work_items(id) ON DELETE SET NULL,
+  material_item_id UUID NOT NULL REFERENCES public.material_items(id) ON DELETE RESTRICT,
+  quantity NUMERIC(14,3) NOT NULL CHECK (quantity > 0),
+  used_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS material_items_user_idx ON public.material_items(user_id);
+CREATE INDEX IF NOT EXISTS project_material_purchases_project_idx ON public.project_material_purchases(project_id);
+CREATE INDEX IF NOT EXISTS project_material_purchases_item_idx ON public.project_material_purchases(material_item_id);
+CREATE INDEX IF NOT EXISTS project_material_areas_project_idx ON public.project_material_areas(project_id);
+CREATE INDEX IF NOT EXISTS project_material_work_items_project_idx ON public.project_material_work_items(project_id);
+CREATE INDEX IF NOT EXISTS project_material_work_items_area_idx ON public.project_material_work_items(area_id);
+CREATE INDEX IF NOT EXISTS project_material_usage_project_idx ON public.project_material_usage(project_id);
+CREATE INDEX IF NOT EXISTS project_material_usage_item_idx ON public.project_material_usage(material_item_id);
+CREATE INDEX IF NOT EXISTS project_material_usage_area_idx ON public.project_material_usage(area_id);
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.material_items, public.project_material_purchases,
+  public.project_material_areas, public.project_material_work_items, public.project_material_usage TO authenticated;
+GRANT ALL ON public.material_items, public.project_material_purchases,
+  public.project_material_areas, public.project_material_work_items, public.project_material_usage TO service_role;
+
+ALTER TABLE public.material_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.project_material_purchases ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.project_material_areas ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.project_material_work_items ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.project_material_usage ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "own material items" ON public.material_items;
+CREATE POLICY "own material items" ON public.material_items FOR ALL TO authenticated
+  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "own project material purchases" ON public.project_material_purchases;
+CREATE POLICY "own project material purchases" ON public.project_material_purchases FOR ALL TO authenticated
+  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "own project material areas" ON public.project_material_areas;
+CREATE POLICY "own project material areas" ON public.project_material_areas FOR ALL TO authenticated
+  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "own project material work items" ON public.project_material_work_items;
+CREATE POLICY "own project material work items" ON public.project_material_work_items FOR ALL TO authenticated
+  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+DROP POLICY IF EXISTS "own project material usage" ON public.project_material_usage;
+CREATE POLICY "own project material usage" ON public.project_material_usage FOR ALL TO authenticated
+  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+DROP TRIGGER IF EXISTS material_items_updated ON public.material_items;
+CREATE TRIGGER material_items_updated BEFORE UPDATE ON public.material_items
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+DROP TRIGGER IF EXISTS project_material_purchases_updated ON public.project_material_purchases;
+CREATE TRIGGER project_material_purchases_updated BEFORE UPDATE ON public.project_material_purchases
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+DROP TRIGGER IF EXISTS project_material_areas_updated ON public.project_material_areas;
+CREATE TRIGGER project_material_areas_updated BEFORE UPDATE ON public.project_material_areas
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+DROP TRIGGER IF EXISTS project_material_work_items_updated ON public.project_material_work_items;
+CREATE TRIGGER project_material_work_items_updated BEFORE UPDATE ON public.project_material_work_items
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+DROP TRIGGER IF EXISTS project_material_usage_updated ON public.project_material_usage;
+CREATE TRIGGER project_material_usage_updated BEFORE UPDATE ON public.project_material_usage
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
 -- ---------- budgets ----------
 CREATE TABLE IF NOT EXISTS public.budgets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
