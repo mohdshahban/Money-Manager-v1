@@ -33,11 +33,26 @@ import {
   useMaterialMutations,
   type MaterialArea,
   type MaterialItem,
+  type MaterialPurchaseBatch,
+  type MaterialPurchaseLineInput,
   type MaterialUsage,
   type MaterialWorkItem,
 } from "@/hooks/useMaterials";
 
 const UNITS = ["pcs", "pair", "sheet", "L", "kg", "m", "roll", "box", "set"] as const;
+
+const PURCHASE_CATEGORIES = [
+  "Paint Material",
+  "Carpentry Hardware",
+  "Plywood & Boards",
+  "Laminate",
+  "Electrical Material",
+  "Plumbing Material",
+  "Tile & Stone",
+  "False Ceiling Material",
+  "Glass & Aluminium",
+  "Other Material",
+] as const;
 const MATERIAL_HINTS = [
   "material",
   "hardware",
@@ -116,7 +131,7 @@ export function MaterialProjectView() {
   const [usageOpen, setUsageOpen] = useState(false);
 
   const { data, isLoading } = useMaterialInventory(projectId || null);
-  const material = data ?? { items: [], purchases: [], areas: [], workItems: [], usage: [] };
+  const material = data ?? { items: [], batches: [], purchases: [], areas: [], workItems: [], usage: [] };
   const mutations = useMaterialMutations(projectId || null);
 
   useEffect(() => {
@@ -189,8 +204,11 @@ export function MaterialProjectView() {
   }, [material.areas, material.workItems, material.usage]);
 
   const linkedTransactionIds = useMemo(
-    () => new Set(material.purchases.map((purchase) => purchase.source_transaction_id).filter(Boolean)),
-    [material.purchases],
+    () => new Set([
+      ...material.batches.map((batch) => batch.source_transaction_id),
+      ...material.purchases.map((purchase) => purchase.source_transaction_id),
+    ].filter(Boolean)),
+    [material.batches, material.purchases],
   );
 
   if (projects.length === 0) {
@@ -235,7 +253,7 @@ export function MaterialProjectView() {
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Summary label="Materials tracked" value={String(inventoryRows.length)} icon={<Boxes className="h-4 w-4" />} />
-        <Summary label="Purchase records" value={String(material.purchases.length)} icon={<ShoppingCart className="h-4 w-4" />} />
+        <Summary label="Purchase batches" value={String(material.batches.length)} icon={<ShoppingCart className="h-4 w-4" />} />
         <Summary label="Usage records" value={String(material.usage.length)} icon={<ClipboardList className="h-4 w-4" />} />
         <Summary label="Rooms / areas" value={String(material.areas.length)} icon={<MapPinned className="h-4 w-4" />} />
       </div>
