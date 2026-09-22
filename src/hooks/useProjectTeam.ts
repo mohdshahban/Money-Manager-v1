@@ -59,6 +59,33 @@ export function useProjectTeamMutations(projectId: string | null) {
       const trade = payload.trade.trim() || "Labour";
       if (!name) throw new Error("Enter a person or team name");
 
+      const { data: existing, error: existingError } = await t("project_team_members")
+        .select("*")
+        .eq("user_id", user.id)
+        .eq("project_id", projectId)
+        .ilike("name", name)
+        .ilike("trade", trade)
+        .limit(1);
+      if (existingError) throw existingError;
+
+      if ((existing ?? []).length > 0) {
+        const member = existing![0] as unknown as ProjectTeamMember;
+        if (member.active) throw new Error("This person/team already exists in the selected project");
+        const { data, error } = await t("project_team_members")
+          .update({
+            active: true,
+            contract_amount: Math.max(0, Number(payload.contract_amount ?? 0)),
+            phone: payload.phone?.trim() || null,
+            notes: payload.notes?.trim() || null,
+            updated_at: new Date().toISOString(),
+          } as never)
+          .eq("id", member.id)
+          .select("*")
+          .single();
+        if (error) throw error;
+        return data as unknown as ProjectTeamMember;
+      }
+
       const { data, error } = await t("project_team_members")
         .insert({
           user_id: user.id,
