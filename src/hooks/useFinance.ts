@@ -44,6 +44,7 @@ export type Transaction = {
   favorite: boolean;
   deleted_at: string | null;
   project_id: string | null;
+  team_member_id: string | null;
   receipt_path: string | null;
 };
 
