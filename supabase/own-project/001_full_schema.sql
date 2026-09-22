@@ -110,6 +110,34 @@ DROP TRIGGER IF EXISTS projects_set_updated_at ON public.projects;
 CREATE TRIGGER projects_set_updated_at BEFORE UPDATE ON public.projects
   FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
 
+-- ---------- project team register ----------
+CREATE TABLE IF NOT EXISTS public.project_team_members (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  trade TEXT NOT NULL DEFAULT 'Labour',
+  contract_amount NUMERIC(14,2) NOT NULL DEFAULT 0,
+  phone TEXT,
+  notes TEXT,
+  active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS project_team_members_project_idx ON public.project_team_members(project_id);
+CREATE INDEX IF NOT EXISTS project_team_members_user_idx ON public.project_team_members(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS project_team_members_identity_idx
+  ON public.project_team_members(project_id, lower(name), lower(trade));
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.project_team_members TO authenticated;
+GRANT ALL ON public.project_team_members TO service_role;
+ALTER TABLE public.project_team_members ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "own project team members" ON public.project_team_members;
+CREATE POLICY "own project team members" ON public.project_team_members FOR ALL TO authenticated
+  USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+DROP TRIGGER IF EXISTS project_team_members_updated ON public.project_team_members;
+CREATE TRIGGER project_team_members_updated BEFORE UPDATE ON public.project_team_members
+  FOR EACH ROW EXECUTE FUNCTION public.set_updated_at();
+
 -- ---------- transactions ----------
 CREATE TABLE IF NOT EXISTS public.transactions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -120,6 +148,7 @@ CREATE TABLE IF NOT EXISTS public.transactions (
   account_id UUID REFERENCES public.accounts(id) ON DELETE SET NULL,
   to_account_id UUID REFERENCES public.accounts(id) ON DELETE SET NULL,
   project_id UUID REFERENCES public.projects(id) ON DELETE SET NULL,
+  team_member_id UUID REFERENCES public.project_team_members(id) ON DELETE SET NULL,
   occurred_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   description TEXT,
   notes TEXT,
@@ -139,6 +168,7 @@ CREATE TABLE IF NOT EXISTS public.transactions (
 CREATE INDEX IF NOT EXISTS transactions_user_occurred_idx ON public.transactions(user_id, occurred_at DESC);
 CREATE INDEX IF NOT EXISTS transactions_user_category_idx ON public.transactions(user_id, category_id);
 CREATE INDEX IF NOT EXISTS transactions_project_id_idx ON public.transactions(project_id);
+CREATE INDEX IF NOT EXISTS transactions_team_member_idx ON public.transactions(team_member_id);
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.transactions TO authenticated;
 GRANT ALL ON public.transactions TO service_role;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
