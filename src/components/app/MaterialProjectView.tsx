@@ -341,46 +341,76 @@ export function MaterialProjectView() {
           <section className="overflow-hidden rounded-2xl border bg-card shadow-[var(--shadow-soft)]">
             <div className="flex items-start justify-between gap-3 border-b p-4">
               <div>
-                <h3 className="font-semibold">Recorded material purchases</h3>
-                <p className="mt-1 text-xs text-muted-foreground">Quantity ledger only. Linking a finance transaction is optional and never changes that transaction.</p>
+                <h3 className="font-semibold">Purchase batches / receipts</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  One receipt can contain many material items. The finance transaction is linked once to the whole batch.
+                </p>
               </div>
-              <Button size="sm" onClick={() => setPurchaseOpen(true)} className="gap-1.5"><Plus className="h-4 w-4" /> Add</Button>
+              <Button size="sm" onClick={() => setPurchaseOpen(true)} className="gap-1.5"><Plus className="h-4 w-4" /> Add purchase</Button>
             </div>
-            {material.purchases.length === 0 ? (
-              <Empty text="No material purchases recorded yet." />
+
+            {material.batches.length === 0 ? (
+              <Empty text="No material purchase batches recorded yet." />
             ) : (
-              <div className="divide-y">
-                {material.purchases.map((purchase) => {
-                  const item = itemById.get(purchase.material_item_id);
-                  const source = allTx.find((tx) => tx.id === purchase.source_transaction_id);
+              <div className="grid gap-3 p-4">
+                {material.batches.map((batch) => {
+                  const batchPurchases = material.purchases.filter((purchase) => purchase.batch_id === batch.id);
+                  const source = allTx.find((tx) => tx.id === batch.source_transaction_id);
                   return (
-                    <div key={purchase.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium">{item?.name ?? "Unknown material"}</p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          {format(new Date(purchase.purchased_at), "dd MMM yyyy")}
-                          {purchase.notes ? ` · ${purchase.notes}` : ""}
-                        </p>
-                        {source && (
-                          <p className="mt-1 flex items-center gap-1 text-[11px] text-primary">
-                            <Link2 className="h-3 w-3" /> Linked to finance transaction · {transactionText(source, categories) || "Expense"}
+                    <details key={batch.id} className="overflow-hidden rounded-xl border bg-muted/10">
+                      <summary className="flex cursor-pointer list-none flex-wrap items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-semibold">{batch.category}</p>
+                            <span className="rounded-full border bg-background px-2 py-0.5 text-[10px] font-medium">
+                              {batchPurchases.length} item{batchPurchases.length === 1 ? "" : "s"}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {format(new Date(batch.purchased_at), "dd MMM yyyy")}
+                            {batch.notes ? ` · ${batch.notes}` : ""}
                           </p>
+                          {source && (
+                            <p className="mt-1 flex items-center gap-1 text-[11px] text-primary">
+                              <Link2 className="h-3 w-3" /> Finance reference · {transactionText(source, categories) || "Expense"}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium text-primary">View items</span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={async (event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              if (!confirm(`Delete this ${batch.category} purchase batch and all ${batchPurchases.length} quantity records? The finance transaction will not be changed.`)) return;
+                              await mutations.deletePurchaseBatch.mutateAsync(batch.id);
+                              toast.success("Purchase batch removed");
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </summary>
+
+                      <div className="divide-y border-t bg-background/70">
+                        {batchPurchases.length === 0 ? (
+                          <div className="px-4 py-4 text-sm text-muted-foreground">No material lines in this batch.</div>
+                        ) : (
+                          batchPurchases.map((purchase) => {
+                            const item = itemById.get(purchase.material_item_id);
+                            return (
+                              <div key={purchase.id} className="flex items-center gap-3 px-4 py-3 text-sm">
+                                <span className="min-w-0 flex-1 truncate">{item?.name ?? "Unknown material"}</span>
+                                <span className="shrink-0 font-semibold tabular-nums">{qty(Number(purchase.quantity))} {item?.unit ?? ""}</span>
+                              </div>
+                            );
+                          })
                         )}
                       </div>
-                      <p className="font-semibold tabular-nums">{qty(Number(purchase.quantity))} {item?.unit ?? ""}</p>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={async () => {
-                          if (!confirm("Delete this purchase quantity record? The finance transaction will not be changed.")) return;
-                          await mutations.deletePurchase.mutateAsync(purchase.id);
-                          toast.success("Purchase record removed");
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
+                    </details>
                   );
                 })}
               </div>
