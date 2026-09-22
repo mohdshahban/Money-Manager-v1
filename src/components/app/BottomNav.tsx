@@ -1,5 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
-import { Home, ListChecks, PieChart, FolderKanban, Settings, Plus, Users } from "lucide-react";
+import { Home, ListChecks, PieChart, FolderKanban, PackageOpen, Settings, Plus, Users } from "lucide-react";
 import { motion } from "framer-motion";
 
 const items = [
@@ -7,6 +7,7 @@ const items = [
   { to: "/transactions", label: "Transactions", icon: ListChecks },
   { to: "/projects", label: "Projects", icon: FolderKanban },
   { to: "/team", label: "Team", icon: Users },
+  { to: "/materials", label: "Materials", icon: PackageOpen },
   { to: "/reports", label: "Reports", icon: PieChart },
   { to: "/settings", label: "Settings", icon: Settings },
 ] as const;
@@ -26,7 +27,7 @@ export function BottomNav({ onAdd }: { onAdd: () => void }) {
         <Plus className="h-7 w-7" strokeWidth={2.5} />
       </motion.button>
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/90 backdrop-blur-xl sm:mx-auto sm:mb-3 sm:max-w-2xl sm:rounded-2xl sm:border sm:shadow-[var(--shadow-soft)]">
-        <ul className="mx-auto grid max-w-2xl grid-cols-6">
+        <ul className="mx-auto grid max-w-2xl grid-cols-7">
           {items.map(({ to, label, icon: Icon }) => {
             const active = pathname === to || pathname.startsWith(to + "/");
             return (
