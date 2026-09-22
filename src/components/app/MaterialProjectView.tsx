@@ -97,7 +97,6 @@ function transactionText(tx: Transaction, categories: Category[]) {
     category?.parent_id ? category.name : null,
     tx.vendor,
     tx.notes,
-    tx.description,
   ]
     .filter(Boolean)
     .join(" · ");
