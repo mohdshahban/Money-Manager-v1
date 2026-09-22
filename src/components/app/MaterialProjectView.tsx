@@ -33,11 +33,26 @@ import {
   useMaterialMutations,
   type MaterialArea,
   type MaterialItem,
+  type MaterialPurchaseBatch,
+  type MaterialPurchaseLineInput,
   type MaterialUsage,
   type MaterialWorkItem,
 } from "@/hooks/useMaterials";
 
 const UNITS = ["pcs", "pair", "sheet", "L", "kg", "m", "roll", "box", "set"] as const;
+
+const PURCHASE_CATEGORIES = [
+  "Paint Material",
+  "Carpentry Hardware",
+  "Plywood & Boards",
+  "Laminate",
+  "Electrical Material",
+  "Plumbing Material",
+  "Tile & Stone",
+  "False Ceiling Material",
+  "Glass & Aluminium",
+  "Other Material",
+] as const;
 const MATERIAL_HINTS = [
   "material",
   "hardware",
@@ -116,7 +131,7 @@ export function MaterialProjectView() {
   const [usageOpen, setUsageOpen] = useState(false);
 
   const { data, isLoading } = useMaterialInventory(projectId || null);
-  const material = data ?? { items: [], purchases: [], areas: [], workItems: [], usage: [] };
+  const material = data ?? { items: [], batches: [], purchases: [], areas: [], workItems: [], usage: [] };
   const mutations = useMaterialMutations(projectId || null);
 
   useEffect(() => {
@@ -189,8 +204,11 @@ export function MaterialProjectView() {
   }, [material.areas, material.workItems, material.usage]);
 
   const linkedTransactionIds = useMemo(
-    () => new Set(material.purchases.map((purchase) => purchase.source_transaction_id).filter(Boolean)),
-    [material.purchases],
+    () => new Set([
+      ...material.batches.map((batch) => batch.source_transaction_id),
+      ...material.purchases.map((purchase) => purchase.source_transaction_id),
+    ].filter(Boolean)),
+    [material.batches, material.purchases],
   );
 
   if (projects.length === 0) {
@@ -235,7 +253,7 @@ export function MaterialProjectView() {
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Summary label="Materials tracked" value={String(inventoryRows.length)} icon={<Boxes className="h-4 w-4" />} />
-        <Summary label="Purchase records" value={String(material.purchases.length)} icon={<ShoppingCart className="h-4 w-4" />} />
+        <Summary label="Purchase batches" value={String(material.batches.length)} icon={<ShoppingCart className="h-4 w-4" />} />
         <Summary label="Usage records" value={String(material.usage.length)} icon={<ClipboardList className="h-4 w-4" />} />
         <Summary label="Rooms / areas" value={String(material.areas.length)} icon={<MapPinned className="h-4 w-4" />} />
       </div>
@@ -323,46 +341,76 @@ export function MaterialProjectView() {
           <section className="overflow-hidden rounded-2xl border bg-card shadow-[var(--shadow-soft)]">
             <div className="flex items-start justify-between gap-3 border-b p-4">
               <div>
-                <h3 className="font-semibold">Recorded material purchases</h3>
-                <p className="mt-1 text-xs text-muted-foreground">Quantity ledger only. Linking a finance transaction is optional and never changes that transaction.</p>
+                <h3 className="font-semibold">Purchase batches / receipts</h3>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  One receipt can contain many material items. The finance transaction is linked once to the whole batch.
+                </p>
               </div>
-              <Button size="sm" onClick={() => setPurchaseOpen(true)} className="gap-1.5"><Plus className="h-4 w-4" /> Add</Button>
+              <Button size="sm" onClick={() => setPurchaseOpen(true)} className="gap-1.5"><Plus className="h-4 w-4" /> Add purchase</Button>
             </div>
-            {material.purchases.length === 0 ? (
-              <Empty text="No material purchases recorded yet." />
+
+            {material.batches.length === 0 ? (
+              <Empty text="No material purchase batches recorded yet." />
             ) : (
-              <div className="divide-y">
-                {material.purchases.map((purchase) => {
-                  const item = itemById.get(purchase.material_item_id);
-                  const source = allTx.find((tx) => tx.id === purchase.source_transaction_id);
+              <div className="grid gap-3 p-4">
+                {material.batches.map((batch) => {
+                  const batchPurchases = material.purchases.filter((purchase) => purchase.batch_id === batch.id);
+                  const source = allTx.find((tx) => tx.id === batch.source_transaction_id);
                   return (
-                    <div key={purchase.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="font-medium">{item?.name ?? "Unknown material"}</p>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
-                          {format(new Date(purchase.purchased_at), "dd MMM yyyy")}
-                          {purchase.notes ? ` · ${purchase.notes}` : ""}
-                        </p>
-                        {source && (
-                          <p className="mt-1 flex items-center gap-1 text-[11px] text-primary">
-                            <Link2 className="h-3 w-3" /> Linked to finance transaction · {transactionText(source, categories) || "Expense"}
+                    <details key={batch.id} className="overflow-hidden rounded-xl border bg-muted/10">
+                      <summary className="flex cursor-pointer list-none flex-wrap items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="font-semibold">{batch.category}</p>
+                            <span className="rounded-full border bg-background px-2 py-0.5 text-[10px] font-medium">
+                              {batchPurchases.length} item{batchPurchases.length === 1 ? "" : "s"}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {format(new Date(batch.purchased_at), "dd MMM yyyy")}
+                            {batch.notes ? ` · ${batch.notes}` : ""}
                           </p>
+                          {source && (
+                            <p className="mt-1 flex items-center gap-1 text-[11px] text-primary">
+                              <Link2 className="h-3 w-3" /> Finance reference · {transactionText(source, categories) || "Expense"}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium text-primary">View items</span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={async (event) => {
+                              event.preventDefault();
+                              event.stopPropagation();
+                              if (!confirm(`Delete this ${batch.category} purchase batch and all ${batchPurchases.length} quantity records? The finance transaction will not be changed.`)) return;
+                              await mutations.deletePurchaseBatch.mutateAsync(batch.id);
+                              toast.success("Purchase batch removed");
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </summary>
+
+                      <div className="divide-y border-t bg-background/70">
+                        {batchPurchases.length === 0 ? (
+                          <div className="px-4 py-4 text-sm text-muted-foreground">No material lines in this batch.</div>
+                        ) : (
+                          batchPurchases.map((purchase) => {
+                            const item = itemById.get(purchase.material_item_id);
+                            return (
+                              <div key={purchase.id} className="flex items-center gap-3 px-4 py-3 text-sm">
+                                <span className="min-w-0 flex-1 truncate">{item?.name ?? "Unknown material"}</span>
+                                <span className="shrink-0 font-semibold tabular-nums">{qty(Number(purchase.quantity))} {item?.unit ?? ""}</span>
+                              </div>
+                            );
+                          })
                         )}
                       </div>
-                      <p className="font-semibold tabular-nums">{qty(Number(purchase.quantity))} {item?.unit ?? ""}</p>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        onClick={async () => {
-                          if (!confirm("Delete this purchase quantity record? The finance transaction will not be changed.")) return;
-                          await mutations.deletePurchase.mutateAsync(purchase.id);
-                          toast.success("Purchase record removed");
-                        }}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    </div>
+                    </details>
                   );
                 })}
               </div>
@@ -424,10 +472,10 @@ export function MaterialProjectView() {
         }}
         initialSourceTransactionId={purchaseSourceId}
         items={material.items}
+        batches={material.batches}
         transactions={projectTxs.filter((tx) => tx.type === "expense")}
         categories={categories}
-        createItem={mutations.createItem.mutateAsync}
-        createPurchase={mutations.createPurchase.mutateAsync}
+        createPurchaseBatch={mutations.createPurchaseBatch.mutateAsync}
       />
 
       <AreaDialog open={areaOpen} onOpenChange={setAreaOpen} createArea={mutations.createArea.mutateAsync} />
@@ -609,71 +657,136 @@ function UsageLines({
   );
 }
 
+type PurchaseLineDraft = {
+  id: number;
+  material_item_id: string;
+  name: string;
+  unit: string;
+  quantity: string;
+};
+
+function blankPurchaseLine(id: number): PurchaseLineDraft {
+  return { id, material_item_id: "", name: "", unit: "pcs", quantity: "" };
+}
+
 function PurchaseDialog({
   open,
   onOpenChange,
   initialSourceTransactionId,
   items,
+  batches,
   transactions,
   categories,
-  createItem,
-  createPurchase,
+  createPurchaseBatch,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   initialSourceTransactionId?: string;
   items: MaterialItem[];
+  batches: MaterialPurchaseBatch[];
   transactions: Transaction[];
   categories: Category[];
-  createItem: (payload: { name: string; unit: string; category?: string | null }) => Promise<MaterialItem>;
-  createPurchase: (payload: {
-    material_item_id: string;
-    quantity: number;
+  createPurchaseBatch: (payload: {
+    category: string;
     purchased_at?: string;
     source_transaction_id?: string | null;
     notes?: string | null;
+    lines: MaterialPurchaseLineInput[];
   }) => Promise<unknown>;
 }) {
-  const [itemId, setItemId] = useState("");
-  const [newName, setNewName] = useState("");
-  const [unit, setUnit] = useState("pcs");
-  const [quantity, setQuantity] = useState("");
+  const [purchaseCategory, setPurchaseCategory] = useState<string>("Other Material");
+  const [customCategory, setCustomCategory] = useState("");
   const [date, setDate] = useState(localDateInput());
   const [sourceTransactionId, setSourceTransactionId] = useState("");
   const [notes, setNotes] = useState("");
+  const [lines, setLines] = useState<PurchaseLineDraft[]>([blankPurchaseLine(1)]);
   const [saving, setSaving] = useState(false);
+
+  const selectedCategory = purchaseCategory === "__custom" ? customCategory.trim() : purchaseCategory;
+
+  const categoryOptions = useMemo(
+    () => [...new Set([
+      ...PURCHASE_CATEGORIES,
+      ...batches.map((batch) => batch.category).filter(Boolean),
+      ...items.map((item) => item.category).filter((value): value is string => !!value),
+    ])],
+    [batches, items],
+  );
+
+  const orderedItems = useMemo(() => {
+    const current = selectedCategory.toLowerCase();
+    return [...items].sort((a, b) => {
+      const aMatch = (a.category ?? "").toLowerCase() === current ? 0 : 1;
+      const bMatch = (b.category ?? "").toLowerCase() === current ? 0 : 1;
+      return aMatch - bMatch || a.name.localeCompare(b.name);
+    });
+  }, [items, selectedCategory]);
 
   useEffect(() => {
     if (open) setSourceTransactionId(initialSourceTransactionId ?? "");
   }, [open, initialSourceTransactionId]);
 
   const reset = () => {
-    setItemId("");
-    setNewName("");
-    setUnit("pcs");
-    setQuantity("");
+    setPurchaseCategory("Other Material");
+    setCustomCategory("");
     setDate(localDateInput());
     setSourceTransactionId("");
     setNotes("");
+    setLines([blankPurchaseLine(1)]);
+  };
+
+  const updateLine = (id: number, patch: Partial<PurchaseLineDraft>) => {
+    setLines((current) => current.map((line) => line.id === id ? { ...line, ...patch } : line));
+  };
+
+  const addLine = () => {
+    setLines((current) => [
+      ...current,
+      blankPurchaseLine(Math.max(0, ...current.map((line) => line.id)) + 1),
+    ]);
   };
 
   const save = async () => {
-    const amount = Number(quantity);
-    if (!amount || amount <= 0) return toast.error("Enter a valid quantity");
-    if (!itemId && !newName.trim()) return toast.error("Select or create a material");
+    if (!selectedCategory) return toast.error("Choose or enter a purchase category");
+
+    const startedLines = lines.filter((line) =>
+      line.material_item_id || line.name.trim() || line.quantity,
+    );
+    if (startedLines.length === 0) return toast.error("Add at least one material item");
+
+    const payloadLines: MaterialPurchaseLineInput[] = [];
+    for (const line of startedLines) {
+      const quantity = Number(line.quantity);
+      if (!quantity || quantity <= 0) return toast.error("Every material line needs a valid quantity");
+
+      if (line.material_item_id) {
+        const item = items.find((entry) => entry.id === line.material_item_id);
+        if (!item) return toast.error("One selected material no longer exists");
+        payloadLines.push({
+          material_item_id: item.id,
+          unit: item.unit,
+          quantity,
+        });
+      } else {
+        if (!line.name.trim()) return toast.error("Enter a material name for every new item");
+        payloadLines.push({
+          name: line.name.trim(),
+          unit: line.unit,
+          quantity,
+        });
+      }
+    }
 
     try {
       setSaving(true);
-      const item = itemId ? items.find((entry) => entry.id === itemId) : await createItem({ name: newName, unit });
-      if (!item) throw new Error("Material not found");
-      await createPurchase({
-        material_item_id: item.id,
-        quantity: amount,
+      await createPurchaseBatch({
+        category: selectedCategory,
         purchased_at: dateToIso(date),
         source_transaction_id: sourceTransactionId || null,
         notes: notes || null,
+        lines: payloadLines,
       });
-      toast.success("Material purchase recorded");
+      toast.success(`Purchase saved · ${payloadLines.length} item${payloadLines.length === 1 ? "" : "s"}`);
       reset();
       onOpenChange(false);
     } catch (error) {
@@ -685,30 +798,132 @@ function PurchaseDialog({
 
   return (
     <Dialog open={open} onOpenChange={(next) => { onOpenChange(next); if (!next) reset(); }}>
-      <DialogContent className="sm:max-w-lg">
-        <DialogHeader><DialogTitle>Record material purchase</DialogTitle></DialogHeader>
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Record material purchase</DialogTitle>
+        </DialogHeader>
+
         <div className="grid gap-4">
-          <div className="grid gap-2">
-            <Label>Existing material</Label>
-            <Select value={itemId || "__new"} onValueChange={(value) => setItemId(value === "__new" ? "" : value)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__new">+ Create new material</SelectItem>
-                {items.map((item) => <SelectItem key={item.id} value={item.id}>{item.name} · {item.unit}</SelectItem>)}
-              </SelectContent>
-            </Select>
+          <div className="grid gap-3 sm:grid-cols-[1fr_180px]">
+            <div className="grid gap-2">
+              <Label>Purchase category</Label>
+              <Select value={purchaseCategory} onValueChange={setPurchaseCategory}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {categoryOptions.map((category) => (
+                    <SelectItem key={category} value={category}>{category}</SelectItem>
+                  ))}
+                  <SelectItem value="__custom">+ Create new category</SelectItem>
+                </SelectContent>
+              </Select>
+              {purchaseCategory === "__custom" && (
+                <Input
+                  autoFocus
+                  value={customCategory}
+                  onChange={(e) => setCustomCategory(e.target.value)}
+                  placeholder="e.g. Paint Material"
+                />
+              )}
+            </div>
+            <div className="grid gap-2">
+              <Label>Purchase date</Label>
+              <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
           </div>
 
-          {!itemId && (
-            <div className="grid grid-cols-[1fr_120px] gap-3">
-              <div className="grid gap-2"><Label>Material name</Label><Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Soft-close hinge" /></div>
-              <div className="grid gap-2"><Label>Unit</Label><Select value={unit} onValueChange={setUnit}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{UNITS.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent></Select></div>
+          <div className="overflow-hidden rounded-xl border">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b bg-muted/25 p-3">
+              <div>
+                <p className="text-sm font-semibold">Items in this purchase</p>
+                <p className="text-[11px] text-muted-foreground">
+                  Add every item from the same receipt here. Pricing is not required.
+                </p>
+              </div>
+              <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={addLine}>
+                <Plus className="h-3.5 w-3.5" /> Add item
+              </Button>
             </div>
-          )}
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="grid gap-2"><Label>Quantity</Label><Input type="number" min="0" step="0.001" value={quantity} onChange={(e) => setQuantity(e.target.value)} /></div>
-            <div className="grid gap-2"><Label>Purchase date</Label><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+            <div className="grid gap-2 p-3">
+              {lines.map((line, index) => {
+                const selectedItem = items.find((item) => item.id === line.material_item_id);
+                return (
+                  <div key={line.id} className="grid gap-2 rounded-xl border bg-background p-3 md:grid-cols-[1fr_125px_105px_38px] md:items-end">
+                    <div className="grid gap-2">
+                      <Label className="text-[11px]">Item {index + 1}</Label>
+                      <Select
+                        value={line.material_item_id || "__new"}
+                        onValueChange={(value) => {
+                          if (value === "__new") {
+                            updateLine(line.id, { material_item_id: "", name: "", unit: "pcs" });
+                            return;
+                          }
+                          const item = items.find((entry) => entry.id === value);
+                          updateLine(line.id, {
+                            material_item_id: value,
+                            name: "",
+                            unit: item?.unit ?? "pcs",
+                          });
+                        }}
+                      >
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="__new">+ New material</SelectItem>
+                          {orderedItems.map((item) => (
+                            <SelectItem key={item.id} value={item.id}>
+                              {item.name} · {item.unit}{item.category ? ` · ${item.category}` : ""}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+
+                      {!line.material_item_id && (
+                        <Input
+                          value={line.name}
+                          onChange={(e) => updateLine(line.id, { name: e.target.value })}
+                          placeholder="Material name, e.g. Masking Tape"
+                        />
+                      )}
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label className="text-[11px]">Quantity</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.001"
+                        value={line.quantity}
+                        onChange={(e) => updateLine(line.id, { quantity: e.target.value })}
+                        placeholder="Qty"
+                      />
+                    </div>
+
+                    <div className="grid gap-2">
+                      <Label className="text-[11px]">Unit</Label>
+                      {selectedItem ? (
+                        <div className="flex h-9 items-center rounded-md border bg-muted/35 px-3 text-sm">{selectedItem.unit}</div>
+                      ) : (
+                        <Select value={line.unit} onValueChange={(value) => updateLine(line.id, { unit: value })}>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                          <SelectContent>{UNITS.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
+                        </Select>
+                      )}
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-9 w-9"
+                      disabled={lines.length === 1}
+                      onClick={() => setLines((current) => current.filter((entry) => entry.id !== line.id))}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           <div className="grid gap-2">
@@ -726,11 +941,20 @@ function PurchaseDialog({
             </Select>
           </div>
 
-          <div className="grid gap-2"><Label>Note</Label><Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" /></div>
+          <div className="grid gap-2">
+            <Label>Receipt / purchase note <span className="text-xs text-muted-foreground">(optional)</span></Label>
+            <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Shop name, receipt note, etc." />
+          </div>
+
+          <div className="rounded-xl bg-muted/35 p-3 text-xs text-muted-foreground">
+            One batch groups the receipt, but every item is still stored separately in inventory so Purchased / Used / Remaining stays accurate item-wise.
+          </div>
 
           <div className="flex justify-end gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-            <Button onClick={() => void save()} disabled={saving}>{saving ? "Saving…" : "Save purchase"}</Button>
+            <Button onClick={() => void save()} disabled={saving}>
+              {saving ? "Saving…" : `Save purchase (${Math.max(1, lines.filter((line) => line.material_item_id || line.name.trim() || line.quantity).length)} items)`}
+            </Button>
           </div>
         </div>
       </DialogContent>
