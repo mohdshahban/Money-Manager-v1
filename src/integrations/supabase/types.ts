@@ -192,6 +192,56 @@ export type Database = {
         }
         Relationships: []
       }
+      project_team_members: {
+        Row: {
+          active: boolean
+          contract_amount: number
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+          phone: string | null
+          project_id: string
+          trade: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          active?: boolean
+          contract_amount?: number
+          created_at?: string
+          id?: string
+          name: string
+          notes?: string | null
+          phone?: string | null
+          project_id: string
+          trade?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          active?: boolean
+          contract_amount?: number
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          phone?: string | null
+          project_id?: string
+          trade?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_team_members_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           archived: boolean
@@ -269,6 +319,7 @@ export type Database = {
           payment_method: string | null
           project_id: string | null
           receipt_path: string | null
+          team_member_id: string | null
           recurring_period: string | null
           status: string
           tags: string[] | null
@@ -294,6 +345,8 @@ export type Database = {
           payment_method?: string | null
           project_id?: string | null
           receipt_path?: string | null
+          team_member_id?: string | null
+          team_member_id?: string | null
           recurring_period?: string | null
           status?: string
           tags?: string[] | null
@@ -348,6 +401,13 @@ export type Database = {
             columns: ["to_account_id"]
             isOneToOne: false
             referencedRelation: "accounts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "transactions_team_member_id_fkey"
+            columns: ["team_member_id"]
+            isOneToOne: false
+            referencedRelation: "project_team_members"
             referencedColumns: ["id"]
           },
         ]
