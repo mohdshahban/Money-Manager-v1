@@ -796,7 +796,8 @@ function WorkDialog({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open && !areaId && areas[0]) setAreaId(areas[0].id);
+    if (!open) return;
+    if (!areaId || !areas.some((area) => area.id === areaId)) setAreaId(areas[0]?.id ?? "");
   }, [open, areaId, areas]);
 
   const save = async () => {
@@ -864,7 +865,8 @@ function UsageDialog({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open && !areaId && areas[0]) setAreaId(areas[0].id);
+    if (!open) return;
+    if (!areaId || !areas.some((area) => area.id === areaId)) setAreaId(areas[0]?.id ?? "");
   }, [open, areaId, areas]);
 
   useEffect(() => {
