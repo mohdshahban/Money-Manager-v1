@@ -424,7 +424,7 @@ export function MaterialProjectView() {
         }}
         initialSourceTransactionId={purchaseSourceId}
         items={material.items}
-        transactions={likelyMaterialTxs}
+        transactions={projectTxs.filter((tx) => tx.type === "expense")}
         categories={categories}
         createItem={mutations.createItem.mutateAsync}
         createPurchase={mutations.createPurchase.mutateAsync}
