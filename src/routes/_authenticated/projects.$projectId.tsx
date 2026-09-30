@@ -45,6 +45,8 @@ function ProjectDetail() {
   const [payFilter, setPayFilter] = useState("all");
   const [spentByFilter, setSpentByFilter] = useState("all");
   const [tagFilter, setTagFilter] = useState("all");
+  const [reviewFilter, setReviewFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("newest");
   const [dateRange, setDateRange] = useState("all");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -77,6 +79,7 @@ function ProjectDetail() {
       if (spentByFilter === "me" && (t.type !== "expense" || partnerSpent)) return false;
     }
     if (tagFilter !== "all" && !(t.tags ?? []).includes(tagFilter)) return false;
+    if (reviewFilter === "flagged" && !t.needs_review) return false;
     if (dateBounds.from && new Date(t.occurred_at) < dateBounds.from) return false;
     if (dateBounds.to && new Date(t.occurred_at) > dateBounds.to) return false;
     if (search.trim()) {
@@ -86,7 +89,16 @@ function ProjectDetail() {
       if (![t.vendor, t.notes, cat, acc, (t.tags ?? []).join(" "), String(t.amount)].join(" ").toLowerCase().includes(q)) return false;
     }
     return true;
-  }), [projectTxs, catFilter, payFilter, spentByFilter, tagFilter, dateBounds, search, categories, accounts]);
+  }).sort((a, b) => {
+    if (sortBy === "flagged") {
+      const flagDiff = Number(!!b.needs_review) - Number(!!a.needs_review);
+      if (flagDiff !== 0) return flagDiff;
+    }
+    if (sortBy === "oldest") return new Date(a.occurred_at).getTime() - new Date(b.occurred_at).getTime();
+    if (sortBy === "amount_desc") return Number(b.amount) - Number(a.amount);
+    if (sortBy === "amount_asc") return Number(a.amount) - Number(b.amount);
+    return new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime();
+  }), [projectTxs, catFilter, payFilter, spentByFilter, tagFilter, reviewFilter, sortBy, dateBounds, search, categories, accounts]);
 
   const stats = useMemo(() => {
     let spent = 0, received = 0;
@@ -124,8 +136,8 @@ function ProjectDetail() {
   const budgetBase = budget > 0 ? budget : quoted;
   const budgetPct = budgetBase > 0 ? Math.min(100, (stats.spent / budgetBase) * 100) : 0;
   const statusTone = project.status === "active" ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/30" : project.status === "completed" ? "bg-blue-500/10 text-blue-600 border-blue-500/30" : project.status === "on_hold" ? "bg-amber-500/10 text-amber-600 border-amber-500/30" : project.status === "cancelled" ? "bg-destructive/10 text-destructive border-destructive/30" : "bg-muted text-muted-foreground border-border";
-  const activeFilters = [catFilter !== "all", payFilter !== "all", spentByFilter !== "all", tagFilter !== "all", dateRange !== "all", !!search].filter(Boolean).length;
-  const clearFilters = () => { setSearch(""); setCatFilter("all"); setPayFilter("all"); setSpentByFilter("all"); setTagFilter("all"); setDateRange("all"); setCustomFrom(""); setCustomTo(""); };
+  const activeFilters = [catFilter !== "all", payFilter !== "all", spentByFilter !== "all", tagFilter !== "all", reviewFilter !== "all", sortBy !== "newest", dateRange !== "all", !!search].filter(Boolean).length;
+  const clearFilters = () => { setSearch(""); setCatFilter("all"); setPayFilter("all"); setSpentByFilter("all"); setTagFilter("all"); setReviewFilter("all"); setSortBy("newest"); setDateRange("all"); setCustomFrom(""); setCustomTo(""); };
   const paymentTxs = projectTxs.filter((t) => t.type === "income");
   const receiptTxs = projectTxs.filter((t) => !!t.receipt_path);
 
@@ -138,6 +150,7 @@ function ProjectDetail() {
     onEdit: (tx: Transaction) => { setEditingTx(tx); setTxOpen(true); },
     onDelete: (tx: Transaction) => softDeleteTx.mutate(tx.id),
     onFavorite: (tx: Transaction) => updateTx.mutate({ id: tx.id, favorite: !tx.favorite }),
+    onNeedsReview: (tx: Transaction) => updateTx.mutate({ id: tx.id, needs_review: !tx.needs_review }),
     onTagClick: (tag: string) => setTagFilter(tag),
   };
 
@@ -206,12 +219,14 @@ function ProjectDetail() {
 
         <TabsContent value="transactions" className="mt-0 grid gap-4">
           <div className="sticky top-0 z-20 rounded-2xl border bg-background/92 p-3 shadow-[var(--shadow-soft)] backdrop-blur-xl lg:top-2">
-            <div className="grid gap-2 xl:grid-cols-[minmax(240px,1.35fr)_repeat(5,minmax(135px,0.75fr))_auto]">
+            <div className="grid gap-2 xl:grid-cols-[minmax(240px,1.35fr)_repeat(7,minmax(125px,0.75fr))_auto]">
               <div className="relative"><Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" /><Input className="pl-9" placeholder="Search vendor, note, tag or amount…" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
               <Select value={catFilter} onValueChange={setCatFilter}><SelectTrigger><SelectValue placeholder="All categories" /></SelectTrigger><SelectContent><SelectItem value="all">All categories</SelectItem>{rootCats.map((c) => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent></Select>
               <Select value={payFilter} onValueChange={setPayFilter}><SelectTrigger><SelectValue placeholder="All payment modes" /></SelectTrigger><SelectContent><SelectItem value="all">All payment modes</SelectItem>{payModes.map((mode) => <SelectItem key={mode} value={mode}>{mode}</SelectItem>)}</SelectContent></Select>
               <Select value={spentByFilter} onValueChange={setSpentByFilter}><SelectTrigger><SelectValue placeholder="Spent by" /></SelectTrigger><SelectContent><SelectItem value="all">Spent by · Everyone</SelectItem><SelectItem value="me">Spent by · Me</SelectItem><SelectItem value="partner">Spent by · Partner</SelectItem></SelectContent></Select>
               <Select value={tagFilter} onValueChange={setTagFilter}><SelectTrigger><SelectValue placeholder="All tags" /></SelectTrigger><SelectContent><SelectItem value="all">All tags</SelectItem>{allTags.map((tag) => <SelectItem key={tag} value={tag}>#{tag}</SelectItem>)}</SelectContent></Select>
+              <Select value={reviewFilter} onValueChange={setReviewFilter}><SelectTrigger><SelectValue placeholder="Review" /></SelectTrigger><SelectContent><SelectItem value="all">Review · All</SelectItem><SelectItem value="flagged">🚩 Flagged only</SelectItem></SelectContent></Select>
+              <Select value={sortBy} onValueChange={setSortBy}><SelectTrigger><SelectValue placeholder="Sort" /></SelectTrigger><SelectContent><SelectItem value="newest">Newest first</SelectItem><SelectItem value="flagged">🚩 Flagged first</SelectItem><SelectItem value="oldest">Oldest first</SelectItem><SelectItem value="amount_desc">Amount · High to low</SelectItem><SelectItem value="amount_asc">Amount · Low to high</SelectItem></SelectContent></Select>
               <Select value={dateRange} onValueChange={setDateRange}><SelectTrigger><SelectValue placeholder="All dates" /></SelectTrigger><SelectContent><SelectItem value="all">All dates</SelectItem><SelectItem value="today">Today</SelectItem><SelectItem value="week">This week</SelectItem><SelectItem value="month">This month</SelectItem><SelectItem value="custom">Custom</SelectItem></SelectContent></Select>
               {activeFilters > 0 ? <Button variant="ghost" size="sm" className="gap-1.5" onClick={clearFilters}><X className="h-4 w-4" /> Clear {activeFilters}</Button> : <div />}
             </div>
