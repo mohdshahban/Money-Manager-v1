@@ -192,6 +192,7 @@ CREATE TABLE IF NOT EXISTS public.transactions (
   is_recurring BOOLEAN NOT NULL DEFAULT false,
   recurring_period TEXT,
   favorite BOOLEAN NOT NULL DEFAULT false,
+  needs_review BOOLEAN NOT NULL DEFAULT false,
   deleted_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -200,6 +201,7 @@ CREATE INDEX IF NOT EXISTS transactions_user_occurred_idx ON public.transactions
 CREATE INDEX IF NOT EXISTS transactions_user_category_idx ON public.transactions(user_id, category_id);
 CREATE INDEX IF NOT EXISTS transactions_project_id_idx ON public.transactions(project_id);
 CREATE INDEX IF NOT EXISTS transactions_team_member_idx ON public.transactions(team_member_id);
+CREATE INDEX IF NOT EXISTS transactions_needs_review_idx ON public.transactions(user_id, needs_review) WHERE deleted_at IS NULL;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.transactions TO authenticated;
 GRANT ALL ON public.transactions TO service_role;
 ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;

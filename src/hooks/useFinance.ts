@@ -42,6 +42,7 @@ export type Transaction = {
   vendor: string | null;
   status: "paid" | "pending" | "cancelled";
   favorite: boolean;
+  needs_review: boolean;
   deleted_at: string | null;
   project_id: string | null;
   team_member_id: string | null;

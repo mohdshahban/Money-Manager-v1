@@ -380,6 +380,7 @@ export type Database = {
           deleted_at: string | null
           description: string | null
           favorite: boolean
+          needs_review: boolean
           id: string
           is_recurring: boolean
           location: string | null
@@ -406,6 +407,7 @@ export type Database = {
           deleted_at?: string | null
           description?: string | null
           favorite?: boolean
+          needs_review?: boolean
           id?: string
           is_recurring?: boolean
           location?: string | null
@@ -432,6 +434,7 @@ export type Database = {
           deleted_at?: string | null
           description?: string | null
           favorite?: boolean
+          needs_review?: boolean
           id?: string
           is_recurring?: boolean
           location?: string | null
