@@ -34,6 +34,8 @@ function TxPage() {
   const [payFilter, setPayFilter] = useState("all");
   const [spentByFilter, setSpentByFilter] = useState("all");
   const [catFilter, setCatFilter] = useState("all");
+  const [reviewFilter, setReviewFilter] = useState("all");
+  const [sortBy, setSortBy] = useState("newest");
   const [dateRange, setDateRange] = useState("all");
   const [customFrom, setCustomFrom] = useState("");
   const [customTo, setCustomTo] = useState("");
@@ -79,6 +81,7 @@ function TxPage() {
         const root = c?.parent_id ?? c?.id ?? null;
         if (root !== catFilter) return false;
       }
+      if (reviewFilter === "flagged" && !t.needs_review) return false;
       if (dateBounds.from && new Date(t.occurred_at) < dateBounds.from) return false;
       if (dateBounds.to && new Date(t.occurred_at) > dateBounds.to) return false;
       if (!Number.isNaN(min) && Number(t.amount) < min) return false;
@@ -88,10 +91,19 @@ function TxPage() {
       const acc = accounts.find((a) => a.id === t.account_id)?.name ?? "";
       const project = projects.find((p) => p.id === t.project_id)?.name ?? "";
       return [t.vendor, t.notes, cat, acc, project, String(t.amount), (t.tags ?? []).join(" ")].join(" ").toLowerCase().includes(query);
+    }).sort((a, b) => {
+      if (sortBy === "flagged") {
+        const flagDiff = Number(!!b.needs_review) - Number(!!a.needs_review);
+        if (flagDiff !== 0) return flagDiff;
+      }
+      if (sortBy === "oldest") return new Date(a.occurred_at).getTime() - new Date(b.occurred_at).getTime();
+      if (sortBy === "amount_desc") return Number(b.amount) - Number(a.amount);
+      if (sortBy === "amount_asc") return Number(a.amount) - Number(b.amount);
+      return new Date(b.occurred_at).getTime() - new Date(a.occurred_at).getTime();
     });
-  }, [txs, q, typeFilter, tagFilter, projectFilter, payFilter, spentByFilter, catFilter, dateBounds, minAmt, maxAmt, cats, accounts, projects]);
+  }, [txs, q, typeFilter, tagFilter, projectFilter, payFilter, spentByFilter, catFilter, reviewFilter, sortBy, dateBounds, minAmt, maxAmt, cats, accounts, projects]);
 
-  const activeCount = [typeFilter !== "all", tagFilter !== "all", projectFilter !== "all", payFilter !== "all", spentByFilter !== "all", catFilter !== "all", dateRange !== "all", !!(minAmt || maxAmt), !!q].filter(Boolean).length;
+  const activeCount = [typeFilter !== "all", tagFilter !== "all", projectFilter !== "all", payFilter !== "all", spentByFilter !== "all", catFilter !== "all", reviewFilter !== "all", sortBy !== "newest", dateRange !== "all", !!(minAmt || maxAmt), !!q].filter(Boolean).length;
   const fIncome = filtered.filter((t) => t.type === "income").reduce((s, t) => s + Number(t.amount), 0);
   const fExpense = filtered.filter((t) => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0);
   const net = fIncome - fExpense;
@@ -99,7 +111,7 @@ function TxPage() {
 
   const clearAll = () => {
     setQ(""); setTypeFilter("all"); setTagFilter("all"); setProjectFilter("all"); setPayFilter("all"); setSpentByFilter("all"); setCatFilter("all");
-    setDateRange("all"); setCustomFrom(""); setCustomTo(""); setMinAmt(""); setMaxAmt("");
+    setReviewFilter("all"); setSortBy("newest"); setDateRange("all"); setCustomFrom(""); setCustomTo(""); setMinAmt(""); setMaxAmt("");
   };
 
   const doExport = async (fmt: "csv" | "xlsx" | "pdf") => {
@@ -153,10 +165,12 @@ function TxPage() {
           <Select value={dateRange} onValueChange={setDateRange}><SelectTrigger><SelectValue placeholder="All dates" /></SelectTrigger><SelectContent><SelectItem value="all">All dates</SelectItem><SelectItem value="today">Today</SelectItem><SelectItem value="week">This week</SelectItem><SelectItem value="month">This month</SelectItem><SelectItem value="custom">Custom range</SelectItem></SelectContent></Select>
         </div>
 
-        <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-[repeat(5,minmax(140px,1fr))_auto]">
+        <div className="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-[repeat(7,minmax(135px,1fr))_auto]">
           <Select value={tagFilter} onValueChange={setTagFilter}><SelectTrigger><SelectValue placeholder="All tags" /></SelectTrigger><SelectContent><SelectItem value="all">All tags</SelectItem>{allTags.map((tag) => <SelectItem key={tag} value={tag}>#{tag}</SelectItem>)}</SelectContent></Select>
           <Select value={payFilter} onValueChange={setPayFilter}><SelectTrigger><SelectValue placeholder="All payment modes" /></SelectTrigger><SelectContent><SelectItem value="all">All payment modes</SelectItem>{payModes.map((mode) => <SelectItem key={mode} value={mode}>{mode}</SelectItem>)}</SelectContent></Select>
           <Select value={spentByFilter} onValueChange={setSpentByFilter}><SelectTrigger><SelectValue placeholder="Spent by" /></SelectTrigger><SelectContent><SelectItem value="all">Spent by · Everyone</SelectItem><SelectItem value="me">Spent by · Me</SelectItem><SelectItem value="partner">Spent by · Partner</SelectItem></SelectContent></Select>
+          <Select value={reviewFilter} onValueChange={setReviewFilter}><SelectTrigger><SelectValue placeholder="Review" /></SelectTrigger><SelectContent><SelectItem value="all">Review · All</SelectItem><SelectItem value="flagged">🚩 Flagged only</SelectItem></SelectContent></Select>
+          <Select value={sortBy} onValueChange={setSortBy}><SelectTrigger><SelectValue placeholder="Sort" /></SelectTrigger><SelectContent><SelectItem value="newest">Newest first</SelectItem><SelectItem value="flagged">🚩 Flagged first</SelectItem><SelectItem value="oldest">Oldest first</SelectItem><SelectItem value="amount_desc">Amount · High to low</SelectItem><SelectItem value="amount_asc">Amount · Low to high</SelectItem></SelectContent></Select>
           <Input type="number" placeholder="Min amount" value={minAmt} onChange={(e) => setMinAmt(e.target.value)} />
           <Input type="number" placeholder="Max amount" value={maxAmt} onChange={(e) => setMaxAmt(e.target.value)} />
           {activeCount > 0 ? <Button variant="ghost" size="sm" className="gap-1.5 self-center" onClick={clearAll}><X className="h-4 w-4" /> Clear {activeCount}</Button> : <div />}
@@ -189,6 +203,7 @@ function TxPage() {
         onEdit={(tx) => { setEditing(tx); setOpen(true); }}
         onDelete={(tx) => softDelete.mutate(tx.id)}
         onFavorite={(tx) => update.mutate({ id: tx.id, favorite: !tx.favorite })}
+        onNeedsReview={(tx) => update.mutate({ id: tx.id, needs_review: !tx.needs_review })}
         onTagClick={(tag) => setTagFilter(tag)}
       />
 
