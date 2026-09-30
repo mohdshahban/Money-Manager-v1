@@ -464,6 +464,7 @@ export function TeamProjectView({ projectId: fixedProjectId, allowProjectSwitch 
               onEdit={(tx) => { setEditingTx(tx); setTxOpen(true); }}
               onDelete={(tx) => softDeleteTx.mutate(tx.id)}
               onFavorite={(tx) => updateTx.mutate({ id: tx.id, favorite: !tx.favorite })}
+              onNeedsReview={(tx) => updateTx.mutate({ id: tx.id, needs_review: !tx.needs_review })}
             />
           </div>
         </section>
