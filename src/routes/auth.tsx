@@ -19,6 +19,24 @@ export const Route = createFileRoute("/auth")({
   }),
 });
 
+const PRODUCTION_APP_ORIGIN = "https://money-manager-v1-nine.vercel.app";
+
+function getAuthRedirectOrigin() {
+  const configured = import.meta.env.VITE_PUBLIC_APP_URL?.trim();
+  if (configured) return configured.replace(/\/$/, "");
+
+  if (typeof window !== "undefined") {
+    const { hostname, origin } = window.location;
+    if (hostname === "localhost" || hostname === "127.0.0.1") return origin;
+  }
+
+  return PRODUCTION_APP_ORIGIN;
+}
+
+function authRedirectUrl(path: string) {
+  return new URL(path, getAuthRedirectOrigin()).toString();
+}
+
 function AuthPage() {
   const { session, loading } = useAuth();
   const nav = useNavigate();
@@ -48,12 +66,12 @@ function AuthPage() {
         const { error } = await supabase.auth.signUp({
           email,
           password,
-          options: { emailRedirectTo: window.location.origin + returnTo, data: { full_name: name } },
+          options: { emailRedirectTo: authRedirectUrl(returnTo), data: { full_name: name } },
         });
         if (error) throw error;
         toast.success("Check your email to confirm your account.");
       } else {
-        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin + "/reset-password" });
+        const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: authRedirectUrl("/reset-password") });
         if (error) throw error;
         toast.success("Password reset email sent.");
         setMode("signin");
@@ -68,7 +86,7 @@ function AuthPage() {
   const google = async () => {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: window.location.origin + returnTo },
+      options: { redirectTo: authRedirectUrl(returnTo) },
     });
     if (error) toast.error(error.message);
   };
