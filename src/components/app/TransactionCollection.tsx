@@ -1,5 +1,5 @@
 import { format } from "date-fns";
-import { Pencil, Star, Trash2 } from "lucide-react";
+import { Flag, Pencil, Star, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ReceiptIndicator } from "./ReceiptIndicator";
 import { formatCurrency } from "@/lib/format";
@@ -20,6 +20,7 @@ type Props = {
   onEdit?: (tx: Transaction) => void;
   onDelete?: (tx: Transaction) => void;
   onFavorite?: (tx: Transaction) => void;
+  onNeedsReview?: (tx: Transaction) => void;
   onTagClick?: (tag: string) => void;
 };
 
@@ -48,7 +49,7 @@ export function TransactionCollection(props: Props) {
   return <TransactionList {...props} />;
 }
 
-function TransactionList({ transactions, categories, accounts, projects = [], currency, readOnly = false, onEdit, onDelete, onFavorite, onTagClick }: Props) {
+function TransactionList({ transactions, categories, accounts, projects = [], currency, readOnly = false, onEdit, onDelete, onFavorite, onNeedsReview, onTagClick }: Props) {
   const groups = new Map<string, Transaction[]>();
   transactions.forEach((tx) => {
     const key = format(new Date(tx.occurred_at), "yyyy-MM-dd");
@@ -81,7 +82,25 @@ function TransactionList({ transactions, categories, accounts, projects = [], cu
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1">
                       <p className={`text-sm font-semibold tabular-nums md:text-[15px] ${color}`}>{sign}{formatCurrency(Number(tx.amount), currency)}</p>
-                      {!readOnly && (onFavorite || onEdit || onDelete) && <div className="flex items-center gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100">{onFavorite && <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onFavorite(tx)} aria-label="Favorite transaction"><Star className={`h-3.5 w-3.5 ${tx.favorite ? "fill-[color:var(--warning)] text-[color:var(--warning)]" : ""}`} /></Button>}{onEdit && <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit(tx)} aria-label="Edit transaction"><Pencil className="h-3.5 w-3.5" /></Button>}{onDelete && <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onDelete(tx)} aria-label="Delete transaction"><Trash2 className="h-3.5 w-3.5" /></Button>}</div>}
+                      {!readOnly && (onFavorite || onNeedsReview || onEdit || onDelete) && (
+                        <div className={`flex items-center gap-0.5 opacity-100 transition-opacity ${tx.needs_review ? "md:opacity-100" : "md:opacity-0 md:group-hover:opacity-100"}`}>
+                          {onNeedsReview && (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => onNeedsReview(tx)}
+                              aria-label={tx.needs_review ? "Remove review flag" : "Flag for review"}
+                              title={tx.needs_review ? "Remove review flag" : "Flag for review"}
+                            >
+                              <Flag className={`h-3.5 w-3.5 ${tx.needs_review ? "fill-amber-500 text-amber-600" : ""}`} />
+                            </Button>
+                          )}
+                          {onFavorite && <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onFavorite(tx)} aria-label="Favorite transaction"><Star className={`h-3.5 w-3.5 ${tx.favorite ? "fill-[color:var(--warning)] text-[color:var(--warning)]" : ""}`} /></Button>}
+                          {onEdit && <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onEdit(tx)} aria-label="Edit transaction"><Pencil className="h-3.5 w-3.5" /></Button>}
+                          {onDelete && <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onDelete(tx)} aria-label="Delete transaction"><Trash2 className="h-3.5 w-3.5" /></Button>}
+                        </div>
+                      )}
                     </div>
                   </li>
                 );
@@ -94,8 +113,8 @@ function TransactionList({ transactions, categories, accounts, projects = [], cu
   );
 }
 
-function TransactionTable({ transactions, categories, accounts, projects = [], currency, readOnly = false, onEdit, onDelete, onFavorite, onTagClick }: Props) {
-  const showActions = !readOnly && !!(onEdit || onDelete || onFavorite);
+function TransactionTable({ transactions, categories, accounts, projects = [], currency, readOnly = false, onEdit, onDelete, onFavorite, onNeedsReview, onTagClick }: Props) {
+  const showActions = !readOnly && !!(onEdit || onDelete || onFavorite || onNeedsReview);
   return (
     <div className="overflow-hidden rounded-2xl border bg-card shadow-[var(--shadow-soft)]">
       <div className="max-h-[70vh] overflow-auto">
@@ -116,7 +135,27 @@ function TransactionTable({ transactions, categories, accounts, projects = [], c
                   <td className="px-4 py-3 align-top text-muted-foreground">{spentByPartner ? <><span className="font-medium text-amber-700">Partner</span><span className="block text-xs">Spent by Partner</span></> : <>{acc?.name ?? "—"}{tx.payment_method ? <span className="block text-xs">{tx.payment_method}</span> : null}</>}</td>
                   <td className="px-4 py-3 align-top"><ReceiptIndicator receiptPath={tx.receipt_path} /></td>
                   <td className={`whitespace-nowrap px-4 py-3 text-right align-top font-semibold tabular-nums ${color}`}>{sign}{formatCurrency(Number(tx.amount), currency)}</td>
-                  {showActions && <td className="px-4 py-2 text-right align-top"><div className="inline-flex items-center gap-0.5">{onFavorite && <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onFavorite(tx)} aria-label="Favorite transaction"><Star className={`h-4 w-4 ${tx.favorite ? "fill-[color:var(--warning)] text-[color:var(--warning)]" : ""}`} /></Button>}{onEdit && <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEdit(tx)} aria-label="Edit transaction"><Pencil className="h-4 w-4" /></Button>}{onDelete && <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onDelete(tx)} aria-label="Delete transaction"><Trash2 className="h-4 w-4" /></Button>}</div></td>}
+                  {showActions && (
+                    <td className="px-4 py-2 text-right align-top">
+                      <div className="inline-flex items-center gap-0.5">
+                        {onNeedsReview && (
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={() => onNeedsReview(tx)}
+                            aria-label={tx.needs_review ? "Remove review flag" : "Flag for review"}
+                            title={tx.needs_review ? "Remove review flag" : "Flag for review"}
+                          >
+                            <Flag className={`h-4 w-4 ${tx.needs_review ? "fill-amber-500 text-amber-600" : ""}`} />
+                          </Button>
+                        )}
+                        {onFavorite && <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onFavorite(tx)} aria-label="Favorite transaction"><Star className={`h-4 w-4 ${tx.favorite ? "fill-[color:var(--warning)] text-[color:var(--warning)]" : ""}`} /></Button>}
+                        {onEdit && <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEdit(tx)} aria-label="Edit transaction"><Pencil className="h-4 w-4" /></Button>}
+                        {onDelete && <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onDelete(tx)} aria-label="Delete transaction"><Trash2 className="h-4 w-4" /></Button>}
+                      </div>
+                    </td>
+                  )}
                 </tr>
               );
             })}
